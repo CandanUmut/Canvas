@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <title>The Joy of Painting — Digital Oil Studio</title>
+    <meta
+      name="description"
+      content="A wet-on-wet oil painting studio in the browser. Bob Ross's thirteen colours, his brushes and knives, Liquid White, real pigment mixing and impasto — with a pen, a mouse or your finger."
+    />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Everything is painted into this one GL canvas; the panels below are a
+         DOM overlay sitting on top of it, with holes where paint shows through. -->
+    <canvas id="gl"></canvas>
+
+    <div id="ui">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">🖌️</span>
+          <span class="brand-text">
+            <strong>The Joy of Painting</strong>
+            <em>digital oil studio</em>
+          </span>
+        </div>
+
+        <div class="topbar-group">
+          <button class="btn" id="btn-new" title="Start a fresh canvas">New&nbsp;canvas</button>
+          <button class="btn btn-primary" id="btn-basecoat" aria-haspopup="true" aria-expanded="false">
+            Base&nbsp;coat ▾
+          </button>
+          <button class="btn" id="btn-dry" title="Let the paint set up so the next layer sits on top (Shift+D)">
+            Let&nbsp;it&nbsp;dry
+          </button>
+        </div>
+
+        <div class="topbar-group">
+          <button class="btn icon" id="btn-undo" title="Undo (Ctrl+Z)" disabled>↶</button>
+          <button class="btn icon" id="btn-redo" title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
+        </div>
+
+        <div class="topbar-group zoom">
+          <button class="btn icon" id="btn-zoom-out" title="Zoom out (−)">−</button>
+          <button class="btn zoom-label" id="btn-zoom-fit" title="Fit to window (F)">Fit</button>
+          <button class="btn icon" id="btn-zoom-in" title="Zoom in (+)">+</button>
+        </div>
+
+        <div class="topbar-spacer"></div>
+
+        <div class="topbar-group">
+          <button class="btn narrow-only" id="btn-panels" title="Paints and brush settings">Paints</button>
+          <button class="btn" id="btn-lessons" title="Step-by-step lessons">Lessons</button>
+          <button class="btn" id="btn-save" title="Download as PNG (Ctrl+S)">Save&nbsp;PNG</button>
+        </div>
+      </header>
+
+      <aside class="rail" id="tool-rail" aria-label="Tools"></aside>
+
+      <main class="stage" id="stage">
+        <!-- Transparent. The paint you see here is the GL canvas underneath. -->
+        <div class="easel" id="easel" aria-label="Painting canvas" tabindex="0"></div>
+      </main>
+
+      <aside class="side" id="side">
+        <section class="panel" id="panel-paints">
+          <h2>Paints<span class="hint">click to load · shift-click to squeeze onto the palette</span></h2>
+          <div class="swatches" id="swatches"></div>
+          <h3>Mediums</h3>
+          <div class="swatches mediums" id="mediums"></div>
+        </section>
+
+        <section class="panel" id="panel-palette">
+          <h2>Mixing palette<span class="hint">paint on it to mix &amp; load your brush</span></h2>
+          <div class="palette-slot" id="palette-slot" aria-label="Mixing palette">
+            <canvas id="palette-canvas"></canvas>
+          </div>
+          <div class="palette-actions">
+            <button class="btn small" id="btn-squeeze">Squeeze paint</button>
+            <button class="btn small" id="btn-wipe-palette">Wipe palette</button>
+            <button class="btn small" id="btn-clean-brush" title="Beat the devil out of it (C)">Clean brush</button>
+          </div>
+          <div class="brush-state">
+            <span class="brush-chip" id="brush-chip"></span>
+            <div class="load-bar"><i id="load-fill"></i></div>
+            <span class="load-text" id="load-text">empty</span>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-tool">
+          <h2 id="tool-title">Tool</h2>
+          <p class="blurb" id="tool-blurb"></p>
+          <div class="sliders" id="tool-sliders"></div>
+        </section>
+
+        <section class="panel collapsed" id="panel-surface">
+          <h2 class="toggle" id="surface-toggle">Canvas &amp; light ▾</h2>
+          <div class="sliders" id="surface-sliders"></div>
+        </section>
+      </aside>
+
+      <footer class="statusbar">
+        <span id="status-tool">—</span>
+        <span class="status-sep"></span>
+        <span id="status-hint">Start with a Liquid White base coat, then paint your sky.</span>
+        <span class="topbar-spacer"></span>
+        <span id="status-perf"></span>
+      </footer>
+
+      <!-- Lessons slide over the side panel -->
+      <aside class="lessons" id="lessons" hidden>
+        <header>
+          <h2>Lessons</h2>
+          <button class="btn icon" id="btn-lessons-close" title="Close">✕</button>
+        </header>
+        <div class="lesson-picker" id="lesson-picker"></div>
+        <ol class="lesson-steps" id="lesson-steps"></ol>
+      </aside>
+    </div>
+
+    <div id="fatal" hidden>
+      <div class="fatal-card">
+        <h1>Can't start the studio</h1>
+        <p id="fatal-message"></p>
+      </div>
+    </div>
+
+    <script type="module" src="src/ui/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,160 @@
+// Turns pointer input into dabs.
+//
+// A stroke is not a line -- it is a run of overlapping footprints, spaced by a
+// fraction of the tool's size. Spacing is what separates a smooth blended sky
+// (tight spacing, light pressure) from a broken dry-brush highlight (the same
+// stroke, less paint, the canvas weave doing the rest).
+
+const MAX_DABS_PER_EVENT = 600;
+
+export class StrokeRunner {
+  constructor(engine) {
+    this.engine = engine;
+    this.active = false;
+    this.surface = null;
+    this.last = null;
+    this.residue = 0;
+    this.dabCount = 0;
+  }
+
+  /**
+   * @param surface  the Surface being painted on
+   * @param pt       {x, y} already converted to surface pixels, GL origin
+   * @param input    {pressure, tiltX, tiltY, pointerType}
+   * @param settings live tool/paint settings from the app
+   */
+  begin(surface, pt, input, settings) {
+    this.active = true;
+    this.surface = surface;
+    this.residue = 0;
+    this.dabCount = 0;
+    this.last = { ...pt, pressure: this._pressure(input, settings), angle: null };
+    this.settings = settings;
+    // Lay one ordinary dab now so the mark appears under the pointer at once.
+    // A full tap's worth would be ~30 ordinary dabs, which is why pressing and
+    // dragging used to leave a heavy blob where the stroke started; if the
+    // pointer never moves, end() fills the tap in instead.
+    this._emit(this.last, this.last.pressure, settings, 0, this._restDeplete(settings));
+  }
+
+  extend(pt, input, settings) {
+    if (!this.active) return;
+    const pressure = this._pressure(input, settings);
+    const prev = this.last;
+    let dx = pt.x - prev.x;
+    let dy = pt.y - prev.y;
+    const dist = Math.hypot(dx, dy);
+
+    const size = this._size(settings, pressure);
+    const step = Math.max(0.8, settings.tool.spacing * Math.max(size, size * settings.tool.aspect));
+
+    if (dist < 1e-4) return;
+
+    const ux = dx / dist;
+    const uy = dy / dist;
+    const strokeAngle = Math.atan2(-ux, uy);
+
+    // How far the footprint reaches along the direction of travel. A dab only
+    // meets that much fresh canvas, which is what governs how fast the tool
+    // runs dry -- a knife dragged edge-first empties far quicker than a flat
+    // brush swept broadside.
+    const angle = settings.tool.followStroke ? strokeAngle : settings.angle;
+    const ca = Math.cos(angle);
+    const sa = Math.sin(angle);
+    const along =
+      size * Math.abs(ca * ux + sa * uy) + size * settings.tool.aspect * Math.abs(-sa * ux + ca * uy);
+    const deplete = Math.min(1, step / Math.max(along, 1));
+
+    let travelled = -this.residue;
+    let emitted = 0;
+    while (travelled + step <= dist && emitted < MAX_DABS_PER_EVENT) {
+      travelled += step;
+      const t = travelled / dist;
+      const p = prev.pressure + (pressure - prev.pressure) * t;
+      this._emit({ x: prev.x + dx * t, y: prev.y + dy * t }, p, settings, strokeAngle, deplete);
+      emitted++;
+    }
+    this.residue = dist - travelled;
+    this.last = { x: pt.x, y: pt.y, pressure, angle: strokeAngle };
+  }
+
+  end() {
+    // A press with no travel is a tap -- foliage, cloud, a dot of foam. Build
+    // it up to a full footprint's worth of paint.
+    if (this.active && this.dabCount <= 1 && this.settings) {
+      const deplete = this._restDeplete(this.settings);
+      const extra = Math.min(40, Math.round(1 / deplete) - 1);
+      for (let i = 0; i < extra; i++) {
+        this._emit(this.last, this.last.pressure, this.settings, 0, deplete);
+      }
+    }
+    this.active = false;
+    this.surface = null;
+    const n = this.dabCount;
+    this.dabCount = 0;
+    return n;
+  }
+
+  /** The fresh-canvas share of a dab that is not (yet) going anywhere. */
+  _restDeplete(settings) {
+    const t = settings.tool;
+    const size = settings.size;
+    const step = Math.max(0.8, t.spacing * Math.max(size, size * t.aspect));
+    const along = Math.max(1, (size + size * t.aspect) * 0.5);
+    return Math.min(1, step / along);
+  }
+
+  _pressure(input, settings) {
+    if (!settings.usePressure) return settings.pressure;
+    // Mouse always reports 0.5 while a button is down, and plenty of
+    // touchscreens report 0 or 1 with nothing in between. Only trust a pen.
+    if (input.pointerType === 'pen' && input.pressure > 0) {
+      const curve = settings.pressureCurve ?? 1;
+      return Math.pow(Math.min(1, input.pressure), curve) * settings.pressure + 0.04;
+    }
+    return settings.pressure;
+  }
+
+  _size(settings, pressure) {
+    const t = settings.tool;
+    return settings.size * (1 - t.pressureSize * (1 - pressure));
+  }
+
+  _emit(pt, pressure, settings, strokeAngle, deplete) {
+    const t = settings.tool;
+    const paint = settings.paint;
+    const size = this._size(settings, pressure);
+
+    let angle = t.followStroke ? strokeAngle : settings.angle;
+    if (settings.tiltAngle !== null && settings.tiltAngle !== undefined && !t.followStroke) {
+      angle = settings.tiltAngle;
+    }
+
+    // Odorless thinner cuts the paint: it flows more freely, covers less, and
+    // stops holding a ridge. It is how you get a liner brush to make a twig.
+    const thinner = settings.thinner;
+    const flow = t.flow * settings.flowScale * (1 - t.pressureFlow * (1 - pressure)) * (1 + thinner * 0.5);
+    const pickup = t.pickup * settings.pickupScale;
+
+    this.engine.dab(this.surface, {
+      tool: t,
+      x: pt.x,
+      y: pt.y,
+      size,
+      angle,
+      pressure,
+      flow,
+      pickup,
+      scrape: t.scrape * settings.flowScale,
+      deplete,
+      // Thinner turns any paint into a glaze -- it stops covering and stops
+      // holding a ridge, which is exactly why you thin it to sign your name.
+      opacity: (paint.opacity ?? 1) * (1 - thinner * 0.45),
+      body: paint.body * (1 - thinner * 0.7),
+      wetness: paint.wetness ?? 1,
+      clearMix: paint.clear ? 1 : 0,
+      canvasTint: 1.0,
+    });
+    this.dabCount++;
+  }
+}
