@@ -18,11 +18,19 @@ import {
 import { MASK_RES } from '../data/brushes.js';
 import { hexToRgb, CANVAS_GESSO } from '../data/colors.js';
 
-const RESERVOIR_RES = MASK_RES;
+// Deliberately smaller than the bristle mask. The mask is smooth, so this
+// loses no visible detail, and every dab runs at least one full-reservoir
+// pass -- at 192 those fixed passes were most of the cost of painting.
+const RESERVOIR_RES = 112;
 
 // Surface state packs into 8-bit for undo snapshots. Volume and height exceed
 // 1.0, so they are scaled down on the way in and back up on the way out.
 const PACK_SCALE = 2.5;
+
+const BLEED_EVERY = 3;
+
+const sameColour = (a, b) =>
+  Math.abs(a[0] - b[0]) < 0.004 && Math.abs(a[1] - b[1]) < 0.004 && Math.abs(a[2] - b[2]) < 0.004;
 
 const srgbToLinear = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
 const linearToSrgb = (v) => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
@@ -86,7 +94,13 @@ export class Engine {
       a: new RenderTarget(gl, RESERVOIR_RES, RESERVOIR_RES, { internalFormat: gl.RGBA16F, count: 1 }),
       b: new RenderTarget(gl, RESERVOIR_RES, RESERVOIR_RES, { internalFormat: gl.RGBA16F, count: 1 }),
     };
+    // `stock` is the paint the user actually chose -- a tube, or whatever they
+    // mixed on the palette. `colour` drifts as the tool picks things up off the
+    // canvas. Reloading has to come from stock: refilling from the drifted
+    // colour meant a brush that ran dry over Liquid White came back loaded with
+    // white, and every stroke after the first painted white on white.
     this.brush = { colour: [1, 1, 1], tint: 1, opacity: 1, load: 0, dirty: false };
+    this.brush.stock = { colour: [1, 1, 1], tint: 1, opacity: 1 };
 
     this.maskTextures = new Map();
     this.tool = null;
@@ -99,7 +113,7 @@ export class Engine {
       varnish: 0.08,
       squint: 0,
       weaveScale: 5.5,
-      weaveDepth: 0.40,
+      weaveDepth: 0.22,
     };
 
     this.readBuffer = new Float32Array(4);
@@ -163,6 +177,17 @@ export class Engine {
     this.brush.dirty = false;
   }
 
+  /** Remember the paint the user picked, so reloads come back to it. */
+  setStock(colour, tint, opacity) {
+    this.brush.stock = { colour: colour.slice(), tint, opacity };
+  }
+
+  /** Whatever is on the bristles right now becomes the charged colour. */
+  stockFromBrush() {
+    const b = this.brush;
+    b.stock = { colour: b.colour.slice(), tint: b.tint, opacity: b.opacity };
+  }
+
   /** "Beat the devil out of it." */
   cleanBrush() {
     this.loadBrush([0.97, 0.96, 0.94], 1, 0, true, 1);
@@ -175,10 +200,21 @@ export class Engine {
    * Real brushes get recharged at the start of every stroke; not doing this
    * was the single biggest reason the brush felt permanently empty.
    */
-  rechargeBrush() {
+  rechargeBrush(keepDirty = false) {
     const b = this.brush;
-    if (b.load >= 0.92) return false;
-    this.loadBrush(b.colour, b.tint, 1, true, b.opacity);
+    if (keepDirty) {
+      // Keep whatever the tool dragged up; just top the amount back up.
+      if (b.load >= 0.92) return false;
+      this.loadBrush(b.colour, b.tint, 1, true, b.opacity);
+      return true;
+    }
+    // Auto-clean: every stroke starts with the colour you chose. Gating this
+    // on the load running down meant a big tool -- whose load barely moves --
+    // never got its colour back, so one stroke turned it to whatever it had
+    // been dragged through and it stayed that way.
+    const s = b.stock;
+    if (b.load >= 0.99 && sameColour(b.colour, s.colour)) return false;
+    this.loadBrush(s.colour, s.tint, 1, true, s.opacity);
     return true;
   }
 
@@ -209,6 +245,10 @@ export class Engine {
       uDabSize: [w, h],
       uDabDir: dir,
       uPressure: d.pressure,
+      uBristleOfs: [
+        (Math.random() - 0.5) * (tool.jitter ?? 0),
+        (Math.random() - 0.5) * (tool.jitter ?? 0) * 0.5,
+      ],
       uWeaveScale: surface.weaveScale ?? this.view.weaveScale,
       uWeaveDepth: surface.weaveDepth ?? this.view.weaveDepth,
       uDeplete: d.deplete,
@@ -267,7 +307,14 @@ export class Engine {
 
     if (updatesReservoir) {
       this._swapReservoir();
-      this._bleed(mask, tool, d.deplete);
+      // Diffusion does not need to run every dab: the same spreading happens
+      // if it runs a third as often with three times the strength, at a third
+      // of the cost.
+      this._bleedDue = (this._bleedDue || 0) + 1;
+      if (this._bleedDue >= BLEED_EVERY) {
+        this._bleed(mask, tool, d.deplete * this._bleedDue);
+        this._bleedDue = 0;
+      }
     }
   }
 
@@ -278,11 +325,17 @@ export class Engine {
    * brush lays a striped stroke and never a green one.
    */
   _bleed(mask, tool, deplete) {
-    const strength = Math.min(0.6, (tool.bleed ?? 1) * deplete * 4);
+    // 0.6 was a violent blur of the whole bristle bed in one step.
+    const strength = Math.min(0.32, (tool.bleed ?? 1) * deplete * 4);
     if (strength <= 0.0005) return;
     const gl = this.gl;
-    const r = 12 / this.reservoir.a.width;
-    for (const step of [[r, 0], [0, r]]) {
+    const r = 7 / this.reservoir.a.width;
+    // One direction per invocation, alternating. Separable diffusion works
+    // just as well spread across successive dabs and costs half as much.
+    // One direction per invocation, alternating. Separable diffusion works
+    // just as well spread across successive dabs and costs half as much.
+    this._bleedAxis = this._bleedAxis ? 0 : 1;
+    for (const step of [this._bleedAxis ? [r, 0] : [0, r]]) {
       this.reservoir.b.bind();
       this.programs.bleed.use().set({
         uRect: FULL_RECT,
@@ -570,7 +623,10 @@ export class Engine {
     // 81 texels out of 36,864 from the dead centre, which for a knife is a
     // sparse corner of the blade, so the meter dropped by a third the instant
     // you lifted the tool without using any paint.
+    // The bristle mask is stored at MASK_RES; the reservoir is smaller, so
+    // index into the mask by proportion rather than assuming they match.
     const mask = this.tool ? this.tool.mask : null;
+    const mscale = MASK_RES / n;
     let load = 0;
     let bristleTotal = 0;
     let r = 0;
@@ -578,7 +634,12 @@ export class Engine {
     let b = 0;
     let weight = 0;
     for (let i = 0; i < n * n; i++) {
-      const bristle = mask ? mask[i] / 255 : 1;
+      let bristle = 1;
+      if (mask) {
+        const mx = Math.min(MASK_RES - 1, ((i % n) * mscale) | 0);
+        const my = Math.min(MASK_RES - 1, (((i / n) | 0) * mscale) | 0);
+        bristle = mask[my * MASK_RES + mx] / 255;
+      }
       if (bristle <= 0.004) continue;
       const a = buf[i * 4 + 3];
       bristleTotal += bristle;

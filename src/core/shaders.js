@@ -36,6 +36,15 @@ uniform vec2  uDabDir;       // (cos, sin) of the brush angle
 uniform float uPressure;     // 0..1 from the stylus (or 1 for mouse/finger)
 uniform float uWeaveScale;   // canvas thread pitch, in pixels
 uniform float uWeaveDepth;   // how toothy the canvas is
+uniform vec2  uBristleOfs;   // per-dab shift of the bristle pattern
+
+// Bristles are not rigidly fixed: they splay and shift as you work. Sampling
+// the mask at exactly the same offset every dab made each pass re-imprint the
+// identical ribs, so repeated strokes stacked into hard corduroy and crossing
+// strokes made a plaid.
+vec2 bristleUV(vec2 b) {
+  return b + uBristleOfs;
+}
 
 vec2 brushToCanvas(vec2 b) {          // b in 0..1 brush space -> canvas pixels
   vec2 local = (b - 0.5) * uDabSize;
@@ -116,11 +125,36 @@ float tintKS(vec3 c, float tint) {
   return tint / pow(Y, 0.40);
 }
 
+// A symmetric subtractive blend, for spreading paint sideways through the
+// bristle bed. Diffusion must not favour either side: mixPaint deliberately
+// weights by tinting strength, and iterating that drove the whole brush to
+// whichever pigment was strongest instead of averaging. Single-constant
+// Kubelka-Munk in RGB is symmetric, still gives blue + yellow = green, and is
+// about forty times cheaper than the spectral path.
+//
+// The floor matters. Clamping reflectance to 0.004 makes a zero channel blow
+// up to K/S = 124 and drags every mix to mud; 0.03 keeps it well behaved.
+float ksFwd(float c) {
+  float r = clamp(c, 0.03, 1.0);
+  return (1.0 - r) * (1.0 - r) / (2.0 * r);
+}
+float ksInv(float ks) {
+  return clamp(1.0 + ks - sqrt(ks * ks + 2.0 * ks), 0.0, 1.0);
+}
+vec3 mixEven(vec3 a, vec3 b, float w) {
+  w = clamp(w, 0.0, 1.0);
+  if (w <= 0.0005) return a;
+  vec3 ka = vec3(ksFwd(a.r), ksFwd(a.g), ksFwd(a.b));
+  vec3 kb = vec3(ksFwd(b.r), ksFwd(b.g), ksFwd(b.b));
+  vec3 k = mix(ka, kb, w);
+  return vec3(ksInv(k.r), ksInv(k.g), ksInv(k.b));
+}
+
 // Mix two paints. w is the share of the second one, and the blend is linear.
 vec3 mixPaint(vec3 a, float ta, vec3 b, float tb, float w) {
   w = clamp(w, 0.0, 1.0);
-  if (w <= 0.0005) return a;
-  if (w >= 0.9995) return b;
+  if (w <= 0.0015) return a;
+  if (w >= 0.9985) return b;
   return spectral_mix(a, tintKS(a, ta), sqrt(1.0 - w), b, tintKS(b, tb), sqrt(w));
 }
 `;
@@ -228,7 +262,7 @@ out vec4 outReservoir;
 
 void main() {
   vec4 res = texture(uReservoir, vUV);
-  float bristle = texture(uBristle, vUV).r;
+  float bristle = texture(uBristle, bristleUV(vUV)).r;
 
   res.a = max(res.a - uDryOut, 0.0);
   if (bristle <= 0.001) { outReservoir = res; return; }
@@ -258,8 +292,15 @@ void main() {
   // still takes on what it is dragged through -- that is what makes wet-on-wet
   // work at all, and without it a freshly loaded brush stayed at tube strength
   // no matter how much wet Liquid White it was pulled across.
+  //
+  // Both sides of this ratio have to be VOLUMES. Weighing paint picked up (in
+  // layers) against the load (a fill fraction at most 1.0) overstated the
+  // pickup by a factor of uHold -- thirty times for a knife, which turned a
+  // brown blade pure white inside one pull down a mountain.
   float soften = uSoften * uDeplete * contact * min(paint.a, 1.0);
-  float weight = (tk + soften) / max(remain + tk + soften, 1e-5);
+  float held = remain * uHold;
+  float gained = tk * uHold + soften;
+  float weight = gained / max(held + gained, 1e-5);
 
   vec3 colour = res.rgb;
   if (weight > 0.00001 && paint.a > 0.0001) {
@@ -307,8 +348,8 @@ void main() {
 
   vec3 colour = c.rgb;
   if (wa + wb > 1e-5) {
-    colour = mixPaint(colour, uTint, a.rgb, uTint, wa / total);
-    colour = mixPaint(colour, uTint, b.rgb, uTint, wb / (wc + wa + wb));
+    colour = mixEven(colour, a.rgb, wa / total);
+    colour = mixEven(colour, b.rgb, wb / total);
   }
   float load = c.a + (a.a + b.a - 2.0 * c.a) * uStrength * 0.5;
   outReservoir = vec4(colour, clamp(load, 0.0, 1.0));
@@ -353,7 +394,7 @@ void main() {
     outPaint = paint; outSurf = surf; return;
   }
 
-  float bristle = texture(uBristle, b).r;
+  float bristle = texture(uBristle, bristleUV(b)).r;
   if (bristle <= 0.001) { outPaint = paint; outSurf = surf; return; }
 
   float contact = contactAmount(px, bristle, paint.a, surf.r, surf.g);

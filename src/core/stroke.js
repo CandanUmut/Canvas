@@ -7,6 +7,11 @@
 
 const MAX_DABS_PER_EVENT = 600;
 
+// Painting must never be able to run ahead of the GPU. If a device cannot keep
+// up, the stroke thins its dabs out rather than queueing seconds of work behind
+// the user's finger -- which is exactly what "it gets stuck" was.
+const DEFAULT_DAB_BUDGET = 140;
+
 export class StrokeRunner {
   constructor(engine) {
     this.engine = engine;
@@ -16,6 +21,14 @@ export class StrokeRunner {
     this.residue = 0;
     this.dabCount = 0;
     this.covered = 0;
+    this.frameDabs = 0;
+    this.dabBudget = DEFAULT_DAB_BUDGET;
+  }
+
+  /** Called once per rendered frame; resets this frame's dab allowance. */
+  beginFrame(budget) {
+    this.frameDabs = 0;
+    if (budget) this.dabBudget = budget;
   }
 
   /**
@@ -49,7 +62,7 @@ export class StrokeRunner {
     const dist = Math.hypot(dx, dy);
 
     const size = this._size(settings, pressure);
-    const step = Math.max(0.8, settings.tool.spacing * Math.max(size, size * settings.tool.aspect));
+    let step = Math.max(0.8, settings.tool.spacing * Math.max(size, size * settings.tool.aspect));
 
     if (dist < 1e-4) return;
 
@@ -66,6 +79,16 @@ export class StrokeRunner {
     const sa = Math.sin(angle);
     const along =
       size * Math.abs(ca * ux + sa * uy) + size * settings.tool.aspect * Math.abs(-sa * ux + ca * uy);
+
+    // Under load, thin the dabs out rather than emitting more than the frame
+    // can afford -- but never so far apart that the stroke stops being a
+    // stroke. Half a footprint still lays continuous paint, and because the
+    // per-dab amount scales with spacing, coverage is unchanged; only the
+    // smoothness of the edge suffers.
+    const room = Math.max(4, this.dabBudget - this.frameDabs);
+    const wanted = Math.ceil((dist + this.residue) / step);
+    if (wanted > room) step = Math.min(step * (wanted / room), Math.max(step, along * 0.5));
+
     const deplete = Math.min(1, step / Math.max(along, 1));
 
     let travelled = -this.residue;
@@ -164,6 +187,7 @@ export class StrokeRunner {
       canvasTint: 1.0,
     });
     this.dabCount++;
+    this.frameDabs++;
     this.covered += deplete;
   }
 }

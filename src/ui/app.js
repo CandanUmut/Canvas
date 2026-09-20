@@ -44,6 +44,7 @@ const state = {
   flowScale: 1,
   blendScale: 1,
   autoReload: true,
+  dirtyBrush: false,
   thinner: 0,
   zoomMode: 'fit',
   zoom: 1,
@@ -222,7 +223,23 @@ function glRect(el) {
 
 // ----------------------------------------------------------- render loop ---
 
+let lastFrameAt = 0;
+let slowFrames = 0;
+let dabBudget = 140;
+
 function frame(t) {
+  // Watch how long frames are actually taking and hand the stroke runner a
+  // matching allowance. A tablet that cannot manage 140 dabs a frame gets a
+  // coarser stroke instead of a frozen one.
+  if (lastFrameAt) {
+    const dt = t - lastFrameAt;
+    if (dt > 34) slowFrames = Math.min(slowFrames + 1, 40);
+    else if (dt < 20) slowFrames = Math.max(slowFrames - 1, 0);
+    dabBudget = slowFrames > 8 ? Math.max(24, Math.round(140 * (8 / slowFrames))) : 140;
+  }
+  lastFrameAt = t;
+  if (stroke) stroke.beginFrame(dabBudget);
+
   if (needsRender) {
     needsRender = false;
     // The palette borrows a corner of the GL canvas, so copy it out first and
@@ -375,6 +392,7 @@ function selectPaint(id, { squeezeOnly = false } = {}) {
     return;
   }
   engine.loadBrush(hexToRgb(paint.hex), paint.tint, 1, true, paint.opacity);
+  engine.setStock(hexToRgb(paint.hex), paint.tint, paint.opacity);
   updateBrushState({ colour: hexToRgb(paint.hex), load: 1 });
   toast(paint.note);
 }
@@ -550,6 +568,14 @@ function buildToolSliders() {
       title: 'How real brushes work. Turn it off to make the paint run out for good.',
       get: () => state.autoReload,
       set: (v) => (state.autoReload = v),
+    }),
+    checkbox(host, {
+      label: 'Keep a dirty brush between strokes',
+      title:
+        'Off: each stroke starts with the colour you picked. On: the tool keeps whatever it ' +
+        'dragged up off the canvas, the way it would if you never wiped it.',
+      get: () => state.dirtyBrush,
+      set: (v) => (state.dirtyBrush = v),
     })
   );
   refreshToolSliders();
@@ -756,6 +782,7 @@ function wirePointer(el, getSurface, { palette }) {
       const s = engine.samplePaint(surface, pt.x, pt.y);
       if (s.volume > 0.01) {
         engine.loadBrush(s.colour, 1.0, 1, true, 0.85);
+        engine.setStock(s.colour, 1.0, 0.85);
         updateBrushState({ colour: s.colour, load: 1 });
         toast(`Picked up ${rgbToHex(s.colour)} off the canvas.`);
       }
@@ -768,7 +795,7 @@ function wirePointer(el, getSurface, { palette }) {
     // main reason the tool felt permanently empty. It tops the load back up
     // without changing the colour, so a mixture you made survives.
     if (state.autoReload && !palette && !TOOLS_BY_ID[state.toolId].noLoad) {
-      engine.rechargeBrush();
+      engine.rechargeBrush(state.dirtyBrush);
     }
     engine.pushHistory(surface);
     updateUndoButtons();
@@ -812,6 +839,9 @@ function wirePointer(el, getSurface, { palette }) {
     if (ev.pointerType === 'pen') penIsDown = false;
     stroke.end();
     const r = engine.sampleReservoir();
+    // Mixing on the palette is how you choose a colour, so whatever comes off
+    // the board becomes the charged colour for the canvas.
+    if (palette) engine.stockFromBrush();
     updateBrushState(r);
     needsRender = true;
   };
@@ -1210,6 +1240,7 @@ function wireKeyboard() {
 // A small handle on the running studio, for poking at the simulation from the
 // browser console and for automated checks.
 // Handy for calibrating the palette from the console or a test harness.
+window.__tools = TOOLS;
 window.__paints = ALL_PAINTS.map((p) => ({ ...p, rgb: hexToRgb(p.hex) }));
 
 window.studio = {
