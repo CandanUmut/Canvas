@@ -6,54 +6,48 @@
     <title>The Joy of Painting — Digital Oil Studio</title>
     <meta
       name="description"
-      content="A wet-on-wet oil painting studio in the browser. Bob Ross's thirteen colours, his brushes and knives, Liquid White, real pigment mixing and impasto — with a pen, a mouse or your finger."
+      content="A wet-on-wet oil painting studio in the browser. Bob Ross's thirteen colours, his brushes and knives, Liquid White, and real pigment mixing on a real palette — with a pen, a mouse or your finger."
     />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M5 26c3-1 4-3 6-6l9-13c1-2 3-2 4-1s2 3 1 4l-9 13c-2 3-4 4-7 5-1 0-2-1-2-2z' fill='%23d8d4cc'/%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <!-- Everything is painted into this one GL canvas; the panels below are a
-         DOM overlay sitting on top of it, with holes where paint shows through. -->
+         DOM overlay on top of it, with holes where the paint shows through. -->
     <canvas id="gl"></canvas>
 
     <div id="ui">
       <header class="topbar">
-        <div class="brand">
-          <span class="brand-mark">🖌️</span>
-          <span class="brand-text">
-            <strong>The Joy of Painting</strong>
-            <em>digital oil studio</em>
-          </span>
-        </div>
+        <span class="wordmark">
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M5 26c3-1 4-3 6-6l9-13c1-2 3-2 4-1s2 3 1 4l-9 13c-2 3-4 4-7 5-1 0-2-1-2-2z" />
+          </svg>
+          Joy of Painting
+        </span>
 
-        <div class="topbar-group">
-          <button class="btn" id="btn-new" title="Start a fresh canvas">New&nbsp;canvas</button>
-          <button class="btn btn-primary" id="btn-basecoat" aria-haspopup="true" aria-expanded="false">
-            Base&nbsp;coat ▾
-          </button>
-          <button class="btn" id="btn-dry" title="Let the paint set up so the next layer sits on top (Shift+D)">
-            Let&nbsp;it&nbsp;dry
+        <div class="bar-group">
+          <button class="btn" id="btn-canvas" aria-haspopup="true">Canvas ▾</button>
+          <button class="btn" id="btn-dry" title="Let the paint set so the next layer sits on top (Shift+D)">
+            Let it dry
           </button>
         </div>
 
-        <div class="topbar-group">
+        <div class="bar-group">
           <button class="btn icon" id="btn-undo" title="Undo (Ctrl+Z)" disabled>↶</button>
           <button class="btn icon" id="btn-redo" title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
         </div>
 
-        <div class="topbar-group zoom">
-          <button class="btn icon" id="btn-zoom-out" title="Zoom out (−)">−</button>
-          <button class="btn zoom-label" id="btn-zoom-fit" title="Fit to window (F)">Fit</button>
-          <button class="btn icon" id="btn-zoom-in" title="Zoom in (+)">+</button>
-        </div>
+        <button class="btn zoom" id="btn-zoom-fit" title="Click to fit (F) · scroll to zoom">Fit</button>
+        <button class="btn icon" id="btn-squint" title="Hold to see it in grey — the squint test (V)">◐</button>
 
-        <div class="topbar-spacer"></div>
+        <span class="bar-spacer"></span>
 
-        <div class="topbar-group">
-          <button class="btn narrow-only" id="btn-panels" title="Paints and brush settings">Paints</button>
-          <button class="btn" id="btn-lessons" title="Step-by-step lessons">Lessons</button>
-          <button class="btn" id="btn-save" title="Download as PNG (Ctrl+S)">Save&nbsp;PNG</button>
-        </div>
+        <button class="btn narrow-only" id="btn-panels">Palette</button>
+        <button class="btn" id="btn-lessons">Lessons</button>
+        <button class="btn" id="btn-save" title="Download as PNG (Ctrl+S)">Save</button>
       </header>
 
       <aside class="rail" id="tool-rail" aria-label="Tools"></aside>
@@ -61,54 +55,73 @@
       <main class="stage" id="stage">
         <!-- Transparent. The paint you see here is the GL canvas underneath. -->
         <div class="easel" id="easel" aria-label="Painting canvas" tabindex="0"></div>
+        <div class="brush-cursor" id="brush-cursor" hidden></div>
+        <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+        <!-- Shown once, over the bare canvas, where the eye already is. -->
+        <div class="firstrun" id="firstrun" hidden>
+          <div class="card">
+            <h1>Start with a wet canvas</h1>
+            <p>
+              Wet-on-wet needs a thin, oily coat underneath. Everything you paint after it will
+              blend into it — that is the whole trick, and very little works without it.
+            </p>
+            <button class="btn primary big" data-basecoat="liquid-white">Liquid White</button>
+            <div class="firstrun-alts">
+              <button class="btn ghost" data-basecoat="liquid-clear">Liquid Clear</button>
+              <button class="btn ghost" data-basecoat="liquid-black">Liquid Black</button>
+            </div>
+            <button class="linkish" id="firstrun-lesson">Paint along with a lesson →</button>
+            <button class="linkish quiet" id="firstrun-skip">or just start painting</button>
+          </div>
+        </div>
       </main>
 
       <aside class="side" id="side">
-        <section class="panel" id="panel-paints">
-          <h2>Paints<span class="hint">click to load · shift-click to squeeze onto the palette</span></h2>
-          <div class="swatches" id="swatches"></div>
-          <h3>Mediums</h3>
-          <div class="swatches mediums" id="mediums"></div>
-        </section>
-
-        <section class="panel" id="panel-palette">
-          <h2>Mixing palette<span class="hint">paint on it to mix &amp; load your brush</span></h2>
+        <!-- The palette is one physical object: a pale board with the pigments
+             squeezed around its edges, laid out the way Bob laid his out --
+             darks up the left, lights across the top. -->
+        <div class="board">
+          <div class="dabs lights" id="dabs-lights"></div>
+          <div class="dabs darks" id="dabs-darks"></div>
           <div class="palette-slot" id="palette-slot" aria-label="Mixing palette">
             <canvas id="palette-canvas"></canvas>
+            <span class="board-hint" id="board-hint">Drag a brush through two colours to mix</span>
           </div>
-          <div class="palette-actions">
-            <button class="btn small" id="btn-squeeze">Squeeze paint</button>
-            <button class="btn small" id="btn-wipe-palette">Wipe palette</button>
-            <button class="btn small" id="btn-clean-brush" title="Beat the devil out of it (C)">Clean brush</button>
-          </div>
-          <div class="brush-state">
-            <span class="brush-chip" id="brush-chip"></span>
+          <button class="board-wipe" id="btn-wipe-palette" title="Scrape the palette clean">⌫</button>
+        </div>
+
+        <div class="brush-row">
+          <span class="current-dab" id="brush-chip" title="What is on the brush right now"></span>
+          <div class="load">
             <div class="load-bar"><i id="load-fill"></i></div>
             <span class="load-text" id="load-text">empty</span>
           </div>
-        </section>
+          <button class="btn small" id="btn-clean-brush" title="Beat the devil out of it (C)">Clean</button>
+        </div>
 
-        <section class="panel" id="panel-tool">
+        <section class="block">
           <h2 id="tool-title">Tool</h2>
           <p class="blurb" id="tool-blurb"></p>
-          <div class="sliders" id="tool-sliders"></div>
+          <div class="sliders" id="size-slider"></div>
         </section>
 
-        <section class="panel collapsed" id="panel-surface">
-          <h2 class="toggle" id="surface-toggle">Canvas &amp; light ▾</h2>
-          <div class="sliders" id="surface-sliders"></div>
+        <section class="block">
+          <span class="field-label">Base coat</span>
+          <div class="mediums" id="mediums"></div>
         </section>
+
+        <details class="disclosure" id="disc-brush">
+          <summary>Brush behaviour</summary>
+          <div class="sliders" id="tool-sliders"></div>
+        </details>
+
+        <details class="disclosure" id="disc-surface">
+          <summary>Canvas &amp; light</summary>
+          <div class="sliders" id="surface-sliders"></div>
+        </details>
       </aside>
 
-      <footer class="statusbar">
-        <span id="status-tool">—</span>
-        <span class="status-sep"></span>
-        <span id="status-hint">Start with a Liquid White base coat, then paint your sky.</span>
-        <span class="topbar-spacer"></span>
-        <span id="status-perf"></span>
-      </footer>
-
-      <!-- Lessons slide over the side panel -->
       <aside class="lessons" id="lessons" hidden>
         <header>
           <h2>Lessons</h2>

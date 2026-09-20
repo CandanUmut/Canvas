@@ -15,6 +15,7 @@ export class StrokeRunner {
     this.last = null;
     this.residue = 0;
     this.dabCount = 0;
+    this.covered = 0;
   }
 
   /**
@@ -28,17 +29,19 @@ export class StrokeRunner {
     this.surface = surface;
     this.residue = 0;
     this.dabCount = 0;
+    this.covered = 0;
     this.last = { ...pt, pressure: this._pressure(input, settings), angle: null };
     this.settings = settings;
     // Lay one ordinary dab now so the mark appears under the pointer at once.
     // A full tap's worth would be ~30 ordinary dabs, which is why pressing and
     // dragging used to leave a heavy blob where the stroke started; if the
     // pointer never moves, end() fills the tap in instead.
-    this._emit(this.last, this.last.pressure, settings, 0, this._restDeplete(settings));
+    this._emit(this.last, this.last.pressure, settings, null, this._restDeplete(settings), 1);
   }
 
   extend(pt, input, settings) {
     if (!this.active) return;
+    this.settings = settings;
     const pressure = this._pressure(input, settings);
     const prev = this.last;
     let dx = pt.x - prev.x;
@@ -71,21 +74,24 @@ export class StrokeRunner {
       travelled += step;
       const t = travelled / dist;
       const p = prev.pressure + (pressure - prev.pressure) * t;
-      this._emit({ x: prev.x + dx * t, y: prev.y + dy * t }, p, settings, strokeAngle, deplete);
+      this._emit({ x: prev.x + dx * t, y: prev.y + dy * t }, p, settings, strokeAngle, deplete, 1);
       emitted++;
     }
-    this.residue = dist - travelled;
+    this.residue = Math.max(0, Math.min(step, dist - travelled));
     this.last = { x: pt.x, y: pt.y, pressure, angle: strokeAngle };
   }
 
   end() {
     // A press with no travel is a tap -- foliage, cloud, a dot of foam. Build
     // it up to a full footprint's worth of paint.
-    if (this.active && this.dabCount <= 1 && this.settings) {
+    // A press that barely moved is a tap -- foliage, a cloud, a dot of foam.
+    // Top it up to a full footprint's worth. Keyed on distance covered, not on
+    // the dab count, so a small hand tremor does not cancel the whole mark.
+    if (this.active && this.covered < 0.92 && this.settings) {
       const deplete = this._restDeplete(this.settings);
-      const extra = Math.min(40, Math.round(1 / deplete) - 1);
+      const extra = Math.min(40, Math.round((1 - this.covered) / deplete));
       for (let i = 0; i < extra; i++) {
-        this._emit(this.last, this.last.pressure, this.settings, 0, deplete);
+        this._emit(this.last, this.last.pressure, this.settings, this.last.angle, deplete, 1);
       }
     }
     this.active = false;
@@ -120,12 +126,12 @@ export class StrokeRunner {
     return settings.size * (1 - t.pressureSize * (1 - pressure));
   }
 
-  _emit(pt, pressure, settings, strokeAngle, deplete) {
+  _emit(pt, pressure, settings, strokeAngle, deplete, moving) {
     const t = settings.tool;
     const paint = settings.paint;
     const size = this._size(settings, pressure);
 
-    let angle = t.followStroke ? strokeAngle : settings.angle;
+    let angle = t.followStroke ? (strokeAngle ?? settings.angle) : settings.angle;
     if (settings.tiltAngle !== null && settings.tiltAngle !== undefined && !t.followStroke) {
       angle = settings.tiltAngle;
     }
@@ -133,8 +139,7 @@ export class StrokeRunner {
     // Odorless thinner cuts the paint: it flows more freely, covers less, and
     // stops holding a ridge. It is how you get a liner brush to make a twig.
     const thinner = settings.thinner;
-    const flow = t.flow * settings.flowScale * (1 - t.pressureFlow * (1 - pressure)) * (1 + thinner * 0.5);
-    const pickup = t.pickup * settings.pickupScale;
+    const press = 1 - t.pressureFlow * (1 - pressure);
 
     this.engine.dab(this.surface, {
       tool: t,
@@ -143,12 +148,15 @@ export class StrokeRunner {
       size,
       angle,
       pressure,
-      flow,
-      pickup,
-      scrape: t.scrape * settings.flowScale,
       deplete,
-      // Thinner turns any paint into a glaze -- it stops covering and stops
-      // holding a ridge, which is exactly why you thin it to sign your name.
+      moving,
+      flow: t.flow * settings.flowScale * press * (1 + thinner * 0.4),
+      pickup: t.pickup * settings.blendScale,
+      soften: t.soften * settings.blendScale,
+      dryOut: t.dryOut,
+      scrape: t.scrape * settings.flowScale,
+      // Thinner makes paint flow; it should not erase the pigment. A thinned
+      // liner stroke of Van Dyke Brown is still a dark line.
       opacity: (paint.opacity ?? 1) * (1 - thinner * 0.45),
       body: paint.body * (1 - thinner * 0.7),
       wetness: paint.wetness ?? 1,
@@ -156,5 +164,6 @@ export class StrokeRunner {
       canvasTint: 1.0,
     });
     this.dabCount++;
+    this.covered += deplete;
   }
 }

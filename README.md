@@ -14,34 +14,49 @@ No build step, no dependencies, no server. Open `index.html` and paint.
 Bob Ross painted **wet-on-wet**: prime the canvas with a thin coat of oily
 white, then work the whole picture in one sitting while everything underneath
 is still wet. Colours blend *on the canvas*, not on the palette. That one fact
-decides almost everything about how the tools behave — so the app simulates it
-rather than drawing strokes.
+decides how all the tools behave — so the app simulates paint rather than
+drawing strokes.
 
-Every dab does two things. The brush first **picks paint up** off the canvas,
-then **puts paint down** a few pixels further along the stroke. That
-displacement is the whole trick: it is what blends a sky, drags the snow line
-off a mountain's edge, and lets a dirty brush pull the colour underneath into
-whatever you paint next. Drag a clean brush across a wet sky and it blends,
-because that is what actually happens.
+The model follows Baxter's IMPaSTo and dAb work, which is the established
+prior art for exactly this problem. Four rules do most of the work:
 
-Four more things follow from it:
+- **Transfer is unidirectional.** At any point under the bristles the tool is
+  either laying paint down or picking it up, never both at once. Doing both is
+  what made an earlier version wipe a pile of paint off the palette while
+  barely loading the brush.
+- **The palette is a paint source, not a picture.** Piles on it are deep, and
+  they are never used up, so a mixture you made is still there to reload from.
+  One pass through a pile fills a brush to about 80%; two fills it.
+- **Load is a fill fraction.** One number, 0 to 100%, meaning what it says.
+  Deposit and pickup both convert through a single per-tool constant, so brush
+  units and canvas units never get added together.
+- **Colour spreads sideways through the bristles.** Drag across two piles and
+  the tool carries a genuine mixture rather than stripes of each — which is
+  what makes the swatch in the corner tell the truth about what will land.
 
-- **Pigments mix like pigments.** Blue over yellow gives green, not grey, using
-  Kubelka–Munk spectral mixing. Each colour also carries its real **tinting
-  strength**: a pinhead of Phthalo Blue swallows a pile of Titanium White,
-  while Yellow Ochre barely argues with anything.
-- **Opacity is separate from colour.** Titanium White buries what is under it;
-  Alizarin Crimson laid on the same spot just stains it. This is why a
-  highlight wants an opaque colour and a shadow is better transparent.
-- **The canvas has tooth.** A cotton-duck weave sits under everything. Press
-  hard and paint floods the valleys; barely touch and it only catches the
-  peaks — which is how one stroke of white becomes a sparkling, broken
-  highlight on a mountain instead of a white stripe.
-- **Brushes run out.** A loaded brush lays colour, then starts carrying
-  whatever it picked up. Reload, or keep going and let it blend.
+Blending happens because a bristle picks paint up at one dab and puts it down
+over the dabs that follow, further along the stroke. Drag a clean brush across
+a wet sky and it blends, because that is what is actually happening.
 
-Thick paint builds real relief and is lit by a studio light you can move, so
-impasto ridges throw shadows.
+Three more things follow:
+
+- **Pigments mix like pigments.** Blue over yellow gives green, not grey, via
+  Kubelka–Munk spectral mixing. Each colour carries its real **tinting
+  strength**: a touch of Phthalo Blue swallows a pile of Titanium White, while
+  Yellow Ochre barely argues with anything. The masstone values are chosen so
+  each pigment *mixes* like the real thing — the widely copied CSS value for
+  Phthalo Blue has a green channel of exactly zero, and no amount of correct
+  colour science gets green out of that.
+- **Opacity is separate from colour.** One pass of Titanium White covers 94%
+  of what is under it; the same pass of Alizarin Crimson covers 71% and mostly
+  stains. This is why a highlight wants an opaque colour and a shadow is
+  better transparent.
+- **The canvas has tooth.** Press hard and paint floods the weave; barely
+  touch and it catches only the peaks — which is how one stroke of white
+  becomes a broken, sparkling highlight on a mountain instead of a stripe.
+
+Brushes run out, and reload at the start of each stroke the way a real one
+does. Thick paint builds real relief, lit by a studio light you can move.
 
 ## The tools
 
@@ -54,6 +69,9 @@ and misting the base of mountains) and a rag that wipes back to bare canvas.
 Each tool is defined by its **footprint** — a picture of the bristles pressed
 flat against the canvas. The gaps matter more than the bristles: the spaces
 between a fan brush's clumps are what make it read as evergreen boughs.
+
+Sizes are in **inches**, not pixels, and scale with the canvas. A 2" brush is
+two inches wide on a 24" canvas at any resolution.
 
 **Colours** — the same thirteen Bob used, in his palette order: Midnight Black,
 Van Dyke Brown, Dark Sienna, Alizarin Crimson, Sap Green, Phthalo Green,
@@ -69,11 +87,13 @@ that flows off a liner brush.
 1. **Base coat first.** *Base coat → Liquid White.* Almost every painting
    starts here; it is what keeps the canvas wet so everything blends. Use
    Liquid Clear instead when you want to keep an area dark.
-2. **Pick a colour.** Click a tube to load your brush. Shift-click to squeeze a
-   blob onto the mixing palette instead.
-3. **Mix for real.** Squeeze two colours onto the palette and drag a brush
-   through both. The palette is a painting surface like any other, so the mix
-   on your bristles is a real mix, and it comes with you to the canvas.
+2. **Pick a colour.** Click a pigment on the palette board. That squeezes a
+   fresh pile onto the board *and* loads your tool with it — one gesture.
+   Shift-click to squeeze without loading.
+3. **Mix for real.** Drag a brush through two piles. The board runs the same
+   simulation as the canvas, so the mix on your bristles is a real mix, and it
+   comes with you to the painting. The swatch under the board is what you are
+   actually holding.
 4. **Work back to front.** Sky, then the mountains behind, then foothills, then
    trees, then water, then the land you are standing on, then the little sticks
    and twigs, then sign it. The **Lessons** panel walks three paintings through
@@ -97,6 +117,7 @@ covering stroke into a broken dry-brush highlight.
 | `Ctrl`+`S` | save a PNG |
 | `+` `−` `F` | zoom in, out, fit |
 | `Alt`+click | pick a colour off the canvas |
+| `V` (hold) | see it in grey — the squint test |
 | `Shift`+drag / middle-drag | pan |
 
 ## Running it
@@ -146,13 +167,29 @@ src/
 ```
 
 Canvas state lives in two floating-point textures: colour and wet-paint volume
-in one, impasto height and wetness in the other. The brush carries a third,
-small texture — the reservoir — holding what is on the bristles right now. Only
-the dab's own footprint is ever recomputed, so cost scales with the brush, not
-the canvas.
+in one, impasto height and wetness in the other. The tool carries a third,
+small texture — the reservoir — holding what is on the bristles right now, with
+a separate pass that lets colour spread sideways through it. Only the dab's own
+footprint is ever recomputed, so cost scales with the brush, not the canvas.
 
 `window.studio` exposes the engine, the surfaces and a `coverageAt()` probe for
 poking at the simulation from the browser console.
+
+## Where the model comes from
+
+- Baxter, Wendt & Lin, **IMPaSTo: A Realistic, Interactive Model for Paint**
+  (NPAR 2004) — bidirectional transfer, the unidirectionality rule, and the
+  dead zone that stops transfer oscillating.
+  <http://gamma.cs.unc.edu/IMPASTO/publications/Baxter-IMPaSTo_Web-NPAR04.pdf>
+- Baxter, **Physically-based Modeling Techniques for Interactive Digital
+  Painting** (UNC dissertation, 2004) — the palette as a paint source that
+  refills the brush and never runs out, and the deep reservoir.
+  <http://gamma-web.iacs.umd.edu/papers/documents/dissertations/baxter04.pdf>
+- Chen, Kim, Ito & Wang, **WetBrush** (SIGGRAPH Asia 2015) — mass transfer and
+  colour transfer are decoupled, so a full brush still picks up colour.
+  <https://wanghmin.github.io/publication/chen-2015-wgb/Chen-2015-WGB.pdf>
+- Stuyck, Da & Dutré, **Real-Time Oil Painting on Mobile Hardware** (CGF 2017).
+  <https://tuurstuyck.github.io/assets/oilpaint_low_res.pdf>
 
 ## Credits
 

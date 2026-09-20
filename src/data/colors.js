@@ -9,13 +9,20 @@
 // `body` is how stiff the paint is out of the tube, which drives how much it
 // holds an impasto ridge vs. flowing flat.
 //
+// The hex values are the pigment's masstone, chosen so that it MIXES like the
+// real thing rather than merely looking right in a swatch. The widely-copied
+// CSS value for Phthalo Blue, #0c0040, has a green channel of exactly zero --
+// no amount of correct Kubelka-Munk can get green out of that, so yellow and
+// blue made mud. Real PB15 is intensely cyan in undertone, and the value below
+// reflects that.
+//
 // `opacity` is whether the pigment covers or glazes, and in oil painting it
 // matters as much as the hue. Titanium White buries whatever is under it;
 // Alizarin Crimson laid over the same spot just stains it. It is why a
 // highlight has to be an opaque colour and a shadow is better transparent.
 
 export const PIGMENTS = [
-  // --- darks -------------------------------------------------------------
+  // --- darks, up the left edge of the board -------------------------------
   {
     id: 'midnight-black',
     name: 'Midnight Black',
@@ -37,8 +44,8 @@ export const PIGMENTS = [
   {
     id: 'dark-sienna',
     name: 'Dark Sienna',
-    hex: '#5f2e1f',
-    tint: 0.75,
+    hex: '#5b2d1c',
+    tint: 0.8,
     opacity: 0.35,
     body: 0.95,
     note: 'Warm transparent brown. Underpainting and cabin wood.',
@@ -46,8 +53,8 @@ export const PIGMENTS = [
   {
     id: 'alizarin-crimson',
     name: 'Alizarin Crimson',
-    hex: '#4e1500',
-    tint: 1.25,
+    hex: '#4b0d20',
+    tint: 1.15,
     opacity: 0.28,
     body: 0.85,
     note: 'Transparent, staining red. Sunset glow and shadow warmth.',
@@ -64,8 +71,8 @@ export const PIGMENTS = [
   {
     id: 'phthalo-green',
     name: 'Phthalo Green',
-    hex: '#102e3c',
-    tint: 2.6,
+    hex: '#0b3d33',
+    tint: 2.2,
     opacity: 0.40,
     body: 0.8,
     note: 'Ferocious. Water, deep evergreens. Use the tiniest touch.',
@@ -73,7 +80,7 @@ export const PIGMENTS = [
   {
     id: 'phthalo-blue',
     name: 'Phthalo Blue',
-    hex: '#0c0040',
+    hex: '#0a3560',
     tint: 2.8,
     opacity: 0.40,
     body: 0.8,
@@ -82,13 +89,13 @@ export const PIGMENTS = [
   {
     id: 'prussian-blue',
     name: 'Prussian Blue',
-    hex: '#021e44',
-    tint: 2.1,
+    hex: '#11304c',
+    tint: 1.45,
     opacity: 0.55,
     body: 0.85,
     note: 'Greyer, softer blue. Distant mountains and winter skies.',
   },
-  // --- lights ------------------------------------------------------------
+  // --- lights, across the top ---------------------------------------------
   {
     id: 'bright-red',
     name: 'Bright Red',
@@ -171,6 +178,14 @@ export const MEDIUMS = [
     note: 'Dark wet base coat. Night skies and dramatic seascapes.',
   },
 ];
+
+// The first eight are the darks that go up the left of the palette; the last
+// five are the lights that go across the top. Bob laid his out this way every
+// single episode.
+const LIGHT_FROM = 8;
+PIGMENTS.forEach((p, i) => {
+  p.dark = i < LIGHT_FROM;
+});
 
 export const ALL_PAINTS = [...PIGMENTS, ...MEDIUMS];
 

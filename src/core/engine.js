@@ -13,6 +13,7 @@ import {
   LOAD_BRUSH_FRAG,
   RENDER_FRAG,
   BLOB_FRAG,
+  BLEED_FRAG,
 } from './shaders.js';
 import { MASK_RES } from '../data/brushes.js';
 import { hexToRgb, CANVAS_GESSO } from '../data/colors.js';
@@ -22,6 +23,9 @@ const RESERVOIR_RES = MASK_RES;
 // Surface state packs into 8-bit for undo snapshots. Volume and height exceed
 // 1.0, so they are scaled down on the way in and back up on the way out.
 const PACK_SCALE = 2.5;
+
+const srgbToLinear = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+const linearToSrgb = (v) => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
 
 /** One painting surface: the canvas, or the mixing palette. */
 export class Surface {
@@ -74,6 +78,7 @@ export class Engine {
       loadBrush: new Program(gl, LOAD_BRUSH_FRAG, 'loadBrush'),
       render: new Program(gl, RENDER_FRAG, 'render'),
       blob: new Program(gl, BLOB_FRAG, 'blob'),
+      bleed: new Program(gl, BLEED_FRAG, 'bleed'),
     };
 
     // The brush reservoir: what is actually on the bristles right now.
@@ -92,6 +97,7 @@ export class Engine {
       relief: 1.0,
       gloss: 0.38,
       varnish: 0.08,
+      squint: 0,
       weaveScale: 5.5,
       weaveDepth: 0.40,
     };
@@ -128,7 +134,7 @@ export class Engine {
     // Re-lay the paint into the new tool's bristle pattern.
     if (previous && previous.id !== toolDef.id && !toolDef.noLoad) {
       const b = this.brush;
-      this.loadBrush(b.colour, b.tint, Math.min(b.load, toolDef.capacity), true, b.opacity);
+      this.loadBrush(b.colour, b.tint, b.load, true, b.opacity);
     }
     return tex;
   }
@@ -153,15 +159,27 @@ export class Engine {
     this.brush.colour = colour;
     this.brush.tint = tint;
     this.brush.opacity = opacity;
-    this.brush.load = load;
+    this.brush.load = Math.min(load, 1);
     this.brush.dirty = false;
   }
 
   /** "Beat the devil out of it." */
   cleanBrush() {
-    this.loadBrush([1, 1, 1], 1, 0, true, 1);
+    this.loadBrush([0.97, 0.96, 0.94], 1, 0, true, 1);
     this.brush.load = 0;
     this.brush.dirty = false;
+  }
+
+  /**
+   * Top the tool back up to full without changing what colour it is carrying.
+   * Real brushes get recharged at the start of every stroke; not doing this
+   * was the single biggest reason the brush felt permanently empty.
+   */
+  rechargeBrush() {
+    const b = this.brush;
+    if (b.load >= 0.92) return false;
+    this.loadBrush(b.colour, b.tint, 1, true, b.opacity);
+    return true;
   }
 
   _swapReservoir() {
@@ -183,6 +201,7 @@ export class Engine {
     const w = d.size;
     const h = d.size * tool.aspect;
     const dir = [Math.cos(d.angle), Math.sin(d.angle)];
+    const palette = surface.isPalette ? 1 : 0;
 
     const common = {
       uCanvasSize: [surface.width, surface.height],
@@ -190,16 +209,21 @@ export class Engine {
       uDabSize: [w, h],
       uDabDir: dir,
       uPressure: d.pressure,
-      uWeaveScale: this.view.weaveScale,
-      uWeaveDepth: this.view.weaveDepth,
-      uPickup: d.pickup,
-      uFlow: d.flow,
+      uWeaveScale: surface.weaveScale ?? this.view.weaveScale,
+      uWeaveDepth: surface.weaveDepth ?? this.view.weaveDepth,
       uDeplete: d.deplete,
+      uFlow: d.flow,
+      uPickup: d.pickup,
+      uHold: tool.hold,
+      uKnee: tool.knee,
+      uSoak: tool.soak,
+      uPalette: palette,
+      uSoften: d.soften,
     };
 
-    // Pass 1: update the bristles -- take paint off the canvas, and subtract
-    // what pass 2 is about to lay down.
-    const updatesReservoir = d.pickup > 0 || d.flow > 0;
+    // Both passes read the reservoir as it was at the start of the dab, so
+    // they agree about how much paint moved. The swap happens after both.
+    const updatesReservoir = d.scrape <= 0;
     if (updatesReservoir) {
       this.reservoir.b.bind();
       this.programs.pickup.use().set({
@@ -211,16 +235,12 @@ export class Engine {
         uSurf: surface.surfTex,
         uCanvasTint: d.canvasTint,
         uBrushTint: this.brush.tint,
-        uCapacity: tool.capacity,
-        uDryOut: tool.dryOut * tool.spacing,
+        uDryOut: d.dryOut * d.deplete,
       });
       drawQuad(gl);
       this.brush.dirty = true;
     }
 
-    // Pass 2: what goes back down, offset along the stroke. It reads the same
-    // reservoir state pass 1 read, so both passes agree on how much moved --
-    // hence the swap only happens once both are done.
     const rect = this._footprintRect(surface, d.x, d.y, w, h);
     if (rect) {
       surface.scratch.bind();
@@ -245,7 +265,36 @@ export class Engine {
       this._blitBack(surface, rect);
     }
 
-    if (updatesReservoir) this._swapReservoir();
+    if (updatesReservoir) {
+      this._swapReservoir();
+      this._bleed(mask, tool, d.deplete);
+    }
+  }
+
+  /**
+   * Lets paint spread sideways through the bristle bed. Two separable taps.
+   * Without it the reservoir stays striped -- drag a brush through blue and
+   * yellow and half the bristles hold pure blue and half pure yellow, so the
+   * brush lays a striped stroke and never a green one.
+   */
+  _bleed(mask, tool, deplete) {
+    const strength = Math.min(0.6, (tool.bleed ?? 1) * deplete * 4);
+    if (strength <= 0.0005) return;
+    const gl = this.gl;
+    const r = 12 / this.reservoir.a.width;
+    for (const step of [[r, 0], [0, r]]) {
+      this.reservoir.b.bind();
+      this.programs.bleed.use().set({
+        uRect: FULL_RECT,
+        uReservoir: this.reservoir.a.texture,
+        uBristle: mask,
+        uStep: step,
+        uStrength: strength,
+        uTint: this.brush.tint,
+      });
+      drawQuad(gl);
+      this._swapReservoir();
+    }
   }
 
   /** Bounding box of a rotated dab, in 0..1 target coords, clipped to canvas. */
@@ -462,6 +511,7 @@ export class Engine {
       uRelief: v.relief,
       uGloss: v.gloss,
       uVarnish: v.varnish,
+      uSquint: v.squint,
       uWeaveScale: surface.weaveScale ?? v.weaveScale,
       uWeaveDepth: surface.weaveDepth ?? v.weaveDepth,
       // The render pass includes the shared chunk, so these must be present.
@@ -506,28 +556,50 @@ export class Engine {
   sampleReservoir() {
     const gl = this.gl;
     const res = this.reservoir.a;
-    const n = 9;
-    const buf = new Float32Array(n * n * 4);
-    const x0 = Math.floor((res.width - n) / 2);
-    const y0 = Math.floor((res.height - n) / 2);
+    const n = res.width;
+    if (!this._resBuf || this._resBuf.length !== n * n * 4) {
+      this._resBuf = new Float32Array(n * n * 4);
+    }
+    const buf = this._resBuf;
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, res.fbo);
     gl.readBuffer(gl.COLOR_ATTACHMENT0);
-    gl.readPixels(x0, y0, n, n, gl.RGBA, gl.FLOAT, buf);
+    gl.readPixels(0, 0, n, n, gl.RGBA, gl.FLOAT, buf);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
 
-    // Weight by load, so bristles holding nothing do not wash out the colour.
-    let r = 0, g = 0, b = 0, load = 0, weight = 0;
+    // Weight by the bristle mask, over the WHOLE bed -- the old version read
+    // 81 texels out of 36,864 from the dead centre, which for a knife is a
+    // sparse corner of the blade, so the meter dropped by a third the instant
+    // you lifted the tool without using any paint.
+    const mask = this.tool ? this.tool.mask : null;
+    let load = 0;
+    let bristleTotal = 0;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let weight = 0;
     for (let i = 0; i < n * n; i++) {
+      const bristle = mask ? mask[i] / 255 : 1;
+      if (bristle <= 0.004) continue;
       const a = buf[i * 4 + 3];
-      r += buf[i * 4] * a;
-      g += buf[i * 4 + 1] * a;
-      b += buf[i * 4 + 2] * a;
-      load += a;
-      weight += a;
+      bristleTotal += bristle;
+      load += a * bristle;
+      const w = a * bristle;
+      // Average in linear light; averaging sRGB skews every mix dark.
+      r += srgbToLinear(buf[i * 4]) * w;
+      g += srgbToLinear(buf[i * 4 + 1]) * w;
+      b += srgbToLinear(buf[i * 4 + 2]) * w;
+      weight += w;
     }
-    const avgLoad = load / (n * n);
-    if (weight < 1e-5) return { colour: this.brush.colour, load: avgLoad };
-    const colour = [r / weight, g / weight, b / weight];
+    const avgLoad = bristleTotal > 0 ? load / bristleTotal : 0;
+    if (weight < 1e-6) {
+      this.brush.load = avgLoad;
+      return { colour: this.brush.colour, load: avgLoad };
+    }
+    const colour = [
+      linearToSrgb(r / weight),
+      linearToSrgb(g / weight),
+      linearToSrgb(b / weight),
+    ];
     this.brush.colour = colour;
     this.brush.load = avgLoad;
     return { colour, load: avgLoad };
