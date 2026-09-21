@@ -1533,6 +1533,13 @@ function makeScript() {
         at += w;
       }
       engine.cleanBrush();
+      // Press into the piles. Mixing was running at whatever pressure the last
+      // stroke happened to leave on the slider, so a colour mixed after a light
+      // blending pass came off the board quite different from the same ratio
+      // mixed after a firm one -- the cloud grey moved from #8d999b to #566367
+      // on nothing but that.
+      const heldPressure = state.pressure;
+      state.pressure = 0.85;
       const input = { pointerType: 'mouse', pressure: 0.5, tiltX: 0, tiltY: 0 };
       const set = settings();
       for (let pass = 0; pass < passes; pass++) {
@@ -1549,6 +1556,7 @@ function makeScript() {
         }
         stroke.end();
       }
+      state.pressure = heldPressure;
       // Read the bristles FIRST: stockFromBrush copies engine.brush.colour,
       // which only becomes the mixture once the reservoir has been sampled.
       // The other way round it stored the colour the brush was cleaned to and
