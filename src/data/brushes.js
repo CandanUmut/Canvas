@@ -309,17 +309,25 @@ export function rasterizeMask(fn, res = MASK_RES, softness = 0.055) {
 // spacing  dab spacing as a fraction of tool size
 // aspect   footprint height / width
 
+// `flow` is layers laid per footprint-length at full load. These were set when
+// a tool laid and lifted paint at the same time, so roughly half of what a pass
+// put down was scrubbed off again by the same pass; the numbers had to be
+// nearly double what they meant. Transfer is one-way now, so they are what they
+// say: one pass of the 2" brush leaves about four tenths of a layer.
 const BRUSH_DEFAULTS = {
   category: 'brush',
   aspect: 1,
   spacing: 0.060,
   hold: 3.6,
-  flow: 1.50,
+  flow: 0.83,
   pickup: 3.5,
   knee: 0.3,
   soak: 0.9,
   bleed: 0.9,
-  soften: 1.1,
+  // The share of the canvas's colour a tool takes on per pass, whatever it is
+  // already carrying -- mass and colour transfer are separate. Every tool sets
+  // its own; this is only the floor.
+  soften: 0.3,
   jitter: 0.05,
   dryOut: 0.1,
   body: 0.85,
@@ -353,7 +361,7 @@ export const TOOLS = [
     inches: 2.0,
     range: [0.5, 5.0],
     hold: 16.0,
-    flow: 1.37,
+    flow: 0.75,
     pickup: 4.0,
     knee: 0.3,
     soak: 0.9,
@@ -381,7 +389,7 @@ export const TOOLS = [
     inches: 1.0,
     range: [0.25, 3.0],
     hold: 14.0,
-    flow: 1.43,
+    flow: 0.79,
     pickup: 4.0,
     knee: 0.3,
     soak: 0.9,
@@ -408,7 +416,7 @@ export const TOOLS = [
     inches: 1.6,
     range: [0.3, 3.0],
     hold: 8.0,
-    flow: 1.62,
+    flow: 0.89,
     pickup: 3.0,
     knee: 0.35,
     soak: 0.9,
@@ -436,7 +444,7 @@ export const TOOLS = [
     inches: 0.75,
     range: [0.15, 2.5],
     hold: 8.0,
-    flow: 1.69,
+    flow: 0.93,
     pickup: 3.0,
     knee: 0.35,
     soak: 0.9,
@@ -462,7 +470,7 @@ export const TOOLS = [
     inches: 0.6,
     range: [0.1, 2.0],
     hold: 9.0,
-    flow: 1.49,
+    flow: 0.82,
     pickup: 3.5,
     knee: 0.3,
     soak: 0.9,
@@ -489,7 +497,7 @@ export const TOOLS = [
     inches: 1.4,
     range: [0.3, 3.0],
     hold: 14.0,
-    flow: 1.37,
+    flow: 0.75,
     pickup: 4.0,
     knee: 0.3,
     soak: 0.9,
@@ -516,7 +524,7 @@ export const TOOLS = [
     inches: 0.12,
     range: [0.02, 0.6],
     hold: 7.0,
-    flow: 1.89,
+    flow: 1.04,
     pickup: 2.5,
     knee: 0.25,
     soak: 0.9,
@@ -544,7 +552,7 @@ export const TOOLS = [
     inches: 0.3,
     range: [0.05, 1.2],
     hold: 6.0,
-    flow: 1.69,
+    flow: 0.93,
     pickup: 2.5,
     knee: 0.3,
     soak: 0.9,
@@ -572,7 +580,7 @@ export const TOOLS = [
     inches: 2.8,
     range: [0.6, 6.0],
     hold: 30.0,
-    flow: 1.82,
+    flow: 1.0,
     pickup: 6.0,
     knee: 0.2,
     soak: 0.6,
@@ -583,7 +591,12 @@ export const TOOLS = [
     cut: 0.2,
     angleJitter: 0.015,
     soften: 0.14,
-    dryOut: 0.09,
+    // A steel blade does not lose paint the way bristles do, and a knife's
+    // footprint along the direction of travel is only its thickness -- so a
+    // loss charged per footprint-length is charged to it thirty times over one
+    // pull down a mountain. At 0.09 the blade ran out after four inches and
+    // spent the rest of the stroke lifting paint instead of laying it.
+    dryOut: 0.02,
     aspect: 0.16,
     spacing: 0.032,
     body: 1.25,
@@ -604,7 +617,7 @@ export const TOOLS = [
     inches: 1.5,
     range: [0.3, 3.5],
     hold: 26.0,
-    flow: 1.82,
+    flow: 1.0,
     pickup: 5.5,
     knee: 0.2,
     soak: 0.6,
@@ -615,7 +628,12 @@ export const TOOLS = [
     cut: 0.2,
     angleJitter: 0.015,
     soften: 0.14,
-    dryOut: 0.09,
+    // A steel blade does not lose paint the way bristles do, and a knife's
+    // footprint along the direction of travel is only its thickness -- so a
+    // loss charged per footprint-length is charged to it thirty times over one
+    // pull down a mountain. At 0.09 the blade ran out after four inches and
+    // spent the rest of the stroke lifting paint instead of laying it.
+    dryOut: 0.02,
     aspect: 0.22,
     spacing: 0.03,
     body: 1.25,
@@ -636,7 +654,7 @@ export const TOOLS = [
     inches: 2.0,
     range: [0.3, 5.0],
     hold: 1.0,
-    flow: 0.00,
+    flow: 0.0,
     pickup: 0.0,
     knee: 0.3,
     soak: 0.9,
@@ -665,7 +683,7 @@ export const TOOLS = [
     inches: 2.0,
     range: [0.4, 5.0],
     hold: 1.5,
-    flow: 0.22,
+    flow: 0.12,
     pickup: 1.2,
     knee: 0.4,
     soak: 0.9,
@@ -695,7 +713,7 @@ export const TOOLS = [
     inches: 1.8,
     range: [0.3, 4.5],
     hold: 1.0,
-    flow: 0.00,
+    flow: 0.0,
     pickup: 0.0,
     knee: 0.3,
     soak: 0.9,

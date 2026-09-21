@@ -1467,12 +1467,11 @@ function makeScript() {
         stroke.extend(pt(pts[i]), input, s);
       }
       stroke.end();
-      // Exactly what lifting the pointer does. It is not bookkeeping: the
-      // cached load is what rechargeBrush decides on, and leaving it stale at
-      // 1.0 meant the tool was never topped up again -- it ran down over a
-      // handful of strokes and started scrubbing paint off instead of laying
-      // it, which looked for all the world like a broken simulation.
-      updateBrushState(engine.sampleReservoir());
+      // Reading the bristles back stalls the pipeline, and a script lays
+      // hundreds of strokes with nothing between them, so it is done only when
+      // asked for. The reload decision does not need it: the engine goes by
+      // whether the tool has been used, not by a cached number.
+      if (opts.sample) updateBrushState(engine.sampleReservoir());
       needsRender = true;
       return this;
     },

@@ -231,8 +231,15 @@ uniform float uOpacity;   // 0 = pure glaze, 1 = buries what is underneath
 // "under" is how much paint is already there. A thin film cannot bury a
 // thick pile -- without that term one pass of a white brush turned a pile of
 // Phthalo Blue on the palette 88% white, so mixing ran backwards.
-float hidingPower(float give, float under) {
-  float o = uOpacity * uOpacity;
+float hidingPower(float give, float under, float wet) {
+  // Hiding power is what a film of paint does to a layer that has SET. Over
+  // paint that is still wet the two do not stack, they intermix -- which is
+  // the whole of wet-on-wet, and the reason a coat of Liquid White goes down
+  // before anything else. Without this, one pass of Titanium White over a wet
+  // dark blue sky left it 93% white although it laid barely a quarter of a
+  // layer, so every stroke sat on the picture like a decal and "let it dry"
+  // changed nothing about how much the next layer covered.
+  float o = uOpacity * uOpacity * (1.0 - 0.85 * clamp(wet, 0.0, 1.0));
   // A thin film cannot bury a thick pile. Without this, one pass of a white
   // brush turned a whole pile of Phthalo Blue on the palette 88% white and
   // mixing ran backwards. But the reference depth matters: a canvas carries
@@ -277,31 +284,57 @@ float penetrated(float volume, float contact) {
   return min(volume, volume * contact + 0.05);
 }
 
+// IMPaSTo's unidirectionality rule, which the rest of the model rests on: at
+// any point under the tool it is either laying paint down or lifting it, never
+// both, with a dead zone between so the two cannot oscillate. A tool with paint
+// on it lays; a tool that has run down lifts, which is what a clean brush
+// dragged across a wet sky is doing. uKnee -- already "the load at which the
+// tool starts to run dry" -- is where it turns over.
+//
+// Running both at once meant a tool that had run out went on laying a trace
+// while it lifted at the maximum rate, so one pull of a knife came out THINNER
+// than the wet ground it was pulled across: -0.18 layers where it should have
+// left about a third of one.
+float layShare(float load) {
+  // A palette is a source, not a surface being painted: a tool put into a pile
+  // fills from it however much it is already carrying.
+  if (uPalette > 0.5) return 0.0;
+  return smoothstep(uKnee * 0.5, uKnee * 1.5, load);
+}
+
 // Volume this dab lays onto one surface pixel.
 float giveVolume(float bristle, float contact, float load) {
-  return uFlow * uDeplete * bristle * contact * min(load / max(uKnee, 1e-4), 1.0);
+  return uFlow * uDeplete * bristle * contact * layShare(load);
 }
 
-// Volume this dab lifts off one surface pixel. A pass touches a given pixel
-// 1/uDeplete times, so the per-dab amount is capped such that one pass can
-// never lift more than 90% of what is there -- otherwise a well-loaded knife
-// (which holds a lot, so uHold is large) scrapes the canvas bare on contact.
-float takeVolume(float bristle, float contact, float volume, float wetness, float load) {
+// Pickup, as a change in the bristle's fill fraction. A texel's own holding is
+// uHold * footprintArea/RES^2 * bristle, so bristle cancels and the fill
+// fraction comes out independent of mask and resolution. A pass touches a
+// given pixel 1/uDeplete times, so the per-dab amount is capped such that one
+// pass can never lift more than 90% of what is there.
+float takeLoad(float contact, float volume, float wetness, float load) {
   float here = penetrated(volume, contact);
   float avail = clamp(here / max(uSoak, 1e-4), 0.0, 1.0);
-  float amt = uPickup * uDeplete * bristle * contact * avail * wetness * uHold * (1.0 - load);
-  return min(amt, 0.9 * here * uDeplete);
+  float amt = uPickup * uDeplete * contact * avail * wetness * (1.0 - load)
+            * (1.0 - layShare(load));
+  // A pass can lift at most this share of the film it crosses. A dry brush
+  // dragged over wet paint takes some of it up; it does not take nearly all
+  // of it, and letting it meant a tool that had run out left a track scraped
+  // back past the base coat.
+  return min(amt, 0.45 * here * uDeplete / max(uHold, 1e-4));
 }
 
-// The same two transfers, as a change in the bristle's fill fraction. A
-// texel's own holding is uHold * footprintArea/RES^2 * bristle, so bristle
-// cancels and the fill fraction ends up independent of mask and resolution.
-float giveLoad(float contact, float load) {
-  return uFlow * uDeplete * contact * min(load / max(uKnee, 1e-4), 1.0) / max(uHold, 1e-4);
+// The SAME transfer, said in the canvas's units. It has to be derived from the
+// bristle's gain rather than computed again, or the two disagree: with an
+// independent cap the canvas lost far more than the tool took on, so a second
+// pass came out thinner than the first and a white brush scrubbed a blue band
+// off a wet canvas instead of painting over it.
+float takeVolume(float bristle, float contact, float volume, float wetness, float load) {
+  return takeLoad(contact, volume, wetness, load) * uHold * bristle;
 }
-float takeLoad(float contact, float volume, float wetness, float load) {
-  float avail = clamp(penetrated(volume, contact) / max(uSoak, 1e-4), 0.0, 1.0);
-  return uPickup * uDeplete * contact * avail * wetness * (1.0 - load);
+
+float giveLoad(float contact, float load) {
+  return uFlow * uDeplete * contact * layShare(load) / max(uHold, 1e-4);
 }
 `;
 
@@ -357,7 +390,7 @@ void main() {
   // drink from it and lose nothing back.
   float wet = max(surf.g, uPalette);
   float tk = takeLoad(contact, paint.a, wet, res.a) * lay;
-  float gv = uPalette > 0.5 ? 0.0 : giveLoad(contact, res.a) * lay;
+  float gv = giveLoad(contact, res.a) * lay;
 
   float remain = max(res.a - gv, 0.0);
   float total = clamp(remain + tk, 0.0, 1.0);
@@ -371,10 +404,26 @@ void main() {
   // layers) against the load (a fill fraction at most 1.0) overstated the
   // pickup by a factor of uHold -- thirty times for a knife, which turned a
   // brown blade pure white inside one pull down a mountain.
-  float soften = uSoften * uDeplete * contact * min(paint.a, 1.0);
+  // Mass first: what the bristle actually took, against what it was holding.
   float held = remain * uHold;
-  float gained = tk * uHold + soften;
+  float gained = tk * uHold;
   float weight = gained / max(held + gained, 1e-5);
+  // Then colour, which crosses the boundary even when no paint does. Only the
+  // film at the very tip is in contact, so what the tool takes on is not
+  // diluted by the whole load it is carrying -- weighing it against the full
+  // reservoir made uSoften, which is written as a share taken on per pass,
+  // worth about a thousandth of that. This is the decoupling WetBrush is
+  // about, and it is what lets a brush already full of white come back
+  // holding a pale blue after one pass across a wet sky.
+  // Not on the palette. A board is a paint SOURCE: what the bristles come away
+  // with there should be the proportion of each pile they crossed, by mass.
+  // Letting the thin-film term run on the palette too made mixing drift to
+  // whichever pigment was darkest -- three parts Sap Green to one of black
+  // came off the board very nearly black -- because the tinting-strength
+  // weighting compounds when it is applied over and over to a colour that is
+  // already moving.
+  float touch = uSoften * uDeplete * contact * min(paint.a, 1.0) * (1.0 - uPalette);
+  weight = clamp(weight + touch * (1.0 - weight), 0.0, 1.0);
 
   vec3 colour = res.rgb;
   if (weight > 0.00001 && paint.a > 0.0001) {
@@ -509,7 +558,7 @@ void main() {
     colour = (remain <= 0.0005)
       ? res.rgb
       : mixPaint(paint.rgb, uCanvasTint, res.rgb, uBrushTint, colourGive / (remain + colourGive));
-    colour = mix(colour, res.rgb, hidingPower(colourGive, remain));
+    colour = mix(colour, res.rgb, hidingPower(colourGive, remain, surf.g));
   }
 
   float volume = clamp(remain + give, 0.0, uMaxVolume);
@@ -595,7 +644,7 @@ void main() {
     colour = (paint.a <= 0.0005)
       ? uColour
       : mixPaint(paint.rgb, uCanvasTint, uColour, uColourTint, give / (paint.a + give));
-    colour = mix(colour, uColour, hidingPower(give, paint.a));
+    colour = mix(colour, uColour, hidingPower(give, paint.a, surf.g));
   }
   outPaint = vec4(colour, min(paint.a + uAmount, 2.5));
   outSurf = vec4(surf.r * 0.7, max(surf.g, uWetness), mix(surf.b, uBody, 0.5), surf.a);
@@ -783,7 +832,7 @@ void main() {
     colour = (paint.a <= 0.0005)
       ? uColour
       : mixPaint(paint.rgb, uCanvasTint, uColour, uColourTint, give / (paint.a + give));
-    colour = mix(colour, uColour, hidingPower(give, paint.a));
+    colour = mix(colour, uColour, hidingPower(give, paint.a, 0.0));
   }
 
   float dome = pow(m, 0.55);

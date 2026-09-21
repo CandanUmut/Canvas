@@ -179,6 +179,8 @@ src/
     storage.js        keeping the painting between visits, in IndexedDB
   ui/app.js           panels, pointer and keyboard wiring
   vendor/             spectral.glsl.js — Kubelka–Munk mixing (MIT)
+paintings/            paintings written down, to be replayed
+tools/                the bench: replay, probe, compare
 ```
 
 Canvas state lives in two floating-point textures: colour and wet-paint volume
@@ -189,6 +191,46 @@ footprint is ever recomputed, so cost scales with the brush, not the canvas.
 
 `window.studio` exposes the engine, the surfaces and a `coverageAt()` probe for
 poking at the simulation from the browser console.
+
+## Judging a change to the paint
+
+A change to the simulation is only worth making if the pictures come out
+better, and a picture painted by hand cannot be painted twice. So a painting
+can be written down — ordinary browser code driving the same `StrokeRunner`
+the pointer drives, through `window.studio.script`:
+
+```js
+s.baseCoat('liquid-white');
+s.tool('brush-2inch', 2.0).set({ pressure: 0.6 });
+s.mix([['titanium-white', 12], ['phthalo-blue', 1]]);   // on the board, for real
+s.stroke([[-60, 40], [1500, 40]]);
+s.clean();
+```
+
+Coordinates are written once, against a 24 in canvas 1440 across, and scale to
+whatever canvas the run uses — so a painting can be tried quickly on a small
+canvas and then painted at size without moving a number. Tool sizes need no
+scaling; they are in inches already.
+
+```sh
+python -m http.server 8000 &
+node tools/paint.mjs paintings/mountain-lake.js out/run-01 --size=half
+node tools/probe.mjs                    # what the simulation does, in numbers
+python3 tools/compare.py out/run-01/final.png reference.jpg out/cmp
+```
+
+`paint.mjs` replays a painting in a real browser and writes each stage out as
+it is painted. `probe.mjs` asks the questions a wet-on-wet painter cares about
+and answers them in numbers — what a loaded brush comes back holding, whether
+a clean brush stays clean, how many layers a pass lays, whether a light touch
+breaks up, what a mixture actually comes out as — so a change to the model can
+be measured before and after instead of argued about. `compare.py` holds a run
+up against a photograph of a real painting: value range and where the values
+sit, colour balance, and local contrast at three scales, band by band down the
+picture.
+
+It needs Chromium, which Playwright will already have, plus Pillow and NumPy
+for the comparison.
 
 ## Where the model comes from
 

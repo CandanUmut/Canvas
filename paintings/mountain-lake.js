@@ -120,19 +120,34 @@ const ridge = [
 const rock = s.mix([['titanium-white', 2], ['midnight-black', 2], ['phthalo-blue', 1]], { tool: 'knife-10' });
 log('mtn rock  ', rock.hex);
 s.tool('knife-10', 1.5).set({ pressure: 0.85 });
-// Cut the ridge in first: it is the one edge in the picture that must be hard.
-s.stroke(ridge, { step: 5 });
-// Then pull the body of it down, following the fall of each face.
-for (let i = 0; i < ridge.length - 1; i++) {
-  const [x0, y0] = ridge[i];
-  const [x1, y1] = ridge[i + 1];
-  for (let t = 0; t < 1; t += 0.25) {
-    const x = lerp(x0, x1, t);
-    const y = lerp(y0, y1, t);
-    const drop = 150 + rnd() * 160;
-    s.stroke([[x, y], [x + jit(26), y + drop]], { step: 7 });
+
+// The blade follows the stroke, so a long pull DOWN FROM THE RIDGE leaves a
+// wide mark with the ridge as its top edge. That is the whole trick: the
+// mountain is built out of a few long pulls, not a hundred short ones -- short
+// overlapping strokes round the silhouette off into a haystack, which is
+// exactly what the first attempt came out as.
+//
+// Each pull runs down the fall line: away from the peak on the side of it the
+// face is on, and further on the faces nearest the peak.
+const PEAK = 10;   // index of the main peak in `ridge`
+for (let i = 0; i < ridge.length; i++) {
+  const [x, y] = ridge[i];
+  const side = i < PEAK ? -1 : 1;
+  // How far round the shoulder this is, 0 at the peak and 1 at the far end.
+  const out = Math.abs(i - PEAK) / (side < 0 ? PEAK : ridge.length - 1 - PEAK);
+  const reach = 300 * (1 - out * 0.62);
+  for (let k = 0; k < 3; k++) {
+    const spread = 0.18 + k * 0.16;
+    s.stroke(
+      [[x + jit(8), y + jit(4)], [x + side * reach * spread + jit(20), y + reach * (0.9 - k * 0.12)]],
+      { step: 9 }
+    );
   }
 }
+// Cut the ridge back in over the top of it. It is the one edge in the picture
+// that has to stay hard, and pulling the faces down softens it.
+s.tool('knife-5', 0.7).set({ pressure: 0.9 });
+s.stroke(ridge, { step: 4 });
 await stage('mountain-mass');
 
 // Snow on the faces that catch the light -- the left of every spine. Pulled

@@ -235,7 +235,14 @@ export class Engine {
     // never got its colour back, so one stroke turned it to whatever it had
     // been dragged through and it stayed that way.
     const s = b.stock;
-    if (b.load >= 0.99 && sameColour(b.colour, s.colour)) return false;
+    // `dirty` is set by the first dab of any stroke, so it says "this tool has
+    // been used since it was last filled" without reading anything back off
+    // the GPU. Deciding on the cached load alone meant the decision was only
+    // right if something had happened to call sampleReservoir in between: a
+    // caller that did not -- a replayed painting, say -- left the load reading
+    // 1.0 for ever, so the tool was never topped up again, ran itself down and
+    // started lifting paint instead of laying it.
+    if (!b.dirty && b.load >= 0.99 && sameColour(b.colour, s.colour)) return false;
     this.loadBrush(s.colour, s.tint, 1, true, s.opacity);
     return true;
   }
