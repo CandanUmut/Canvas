@@ -1492,22 +1492,18 @@ function makeScript() {
       if (tool) selectTool(tool);
       const t = TOOLS_BY_ID[state.toolId];
       const total = parts.reduce((n, p) => n + p[1], 0);
-      // A clean mixing strip across the middle of the board, clear of the
-      // squeezed-out piles round its edges.
+      // Scrape the board first, the way you would before mixing a new colour.
+      // This used to try to do it with a blob of nothing -- which lays nothing
+      // and therefore removes nothing, so every mixture went down on top of
+      // all the ones before it and the colours drifted darker as the painting
+      // went on. The cloud grey came off the board at #1c343d where the same
+      // ratio on a clean board gives #839a9e.
+      engine.clear(paletteSurface);
+      state.squeezeSlot = 0;
       const y = PALETTE_H * 0.52;
       const x0 = PALETTE_W * 0.14;
       const x1 = PALETTE_W * 0.86;
       const span = x1 - x0;
-      engine.blob(paletteSurface, {
-        x: (x0 + x1) / 2,
-        y,
-        radius: span * 0.62,
-        colour: [0, 0, 0],
-        amount: 0,
-        body: 0,
-        wetness: 0,
-        opacity: 0,
-      });
       let at = x0;
       for (const [id, n] of parts) {
         const paint = PAINTS_BY_ID[id];

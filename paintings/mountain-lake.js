@@ -66,11 +66,11 @@ const skyMid = s.mix([['titanium-white', 16], ['phthalo-blue', 1], ['midnight-bl
 log('sky mid   ', skyMid.hex);
 band(170, 340, 24, 0.6);
 
-const skyWarm = s.mix([['titanium-white', 60], ['yellow-ochre', 2], ['van-dyke-brown', 1], ['midnight-black', 1]]);
+const skyWarm = s.mix([['titanium-white', 30], ['yellow-ochre', 1], ['van-dyke-brown', 1], ['bright-red', 1], ['midnight-black', 1]]);
 log('sky warm  ', skyWarm.hex);
 band(320, 560, 24, 0.5);
 
-const skyPink = s.mix([['titanium-white', 60], ['bright-red', 1], ['yellow-ochre', 2]]);
+const skyPink = s.mix([['titanium-white', 40], ['bright-red', 1], ['van-dyke-brown', 1], ['midnight-black', 1]]);
 log('sky pink  ', skyPink.hex);
 band(420, 620, 26, 0.5);
 
@@ -132,7 +132,7 @@ function cloudMass(cx, cy, rx, ry, density, r0) {
 
 // The grey mass first: a cloud's shadow is still full of light, and the lit
 // tops have to sit ON something.
-const cloudGrey = s.mix([['titanium-white', 18], ['midnight-black', 2], ['phthalo-blue', 1]]);
+const cloudGrey = s.mix([['titanium-white', 26], ['midnight-black', 2], ['phthalo-blue', 1]]);
 log('cloud grey', cloudGrey.hex);
 s.tool('brush-2inch', 0.9).set({ pressure: 0.55 });
 cloudMass(1050, 130, 400, 105, 1.0, 26);
@@ -179,7 +179,7 @@ const ridge = [
   [900, 402], [962, 418], [1030, 444], [1104, 478], [1180, 512], [1262, 550], [1350, 592],
 ];
 
-const rock = mixFor([['titanium-white', 3], ['midnight-black', 3], ['phthalo-blue', 1]], 'knife-10', 1.5);
+const rock = mixFor([['titanium-white', 5], ['midnight-black', 3], ['phthalo-blue', 1]], 'knife-10', 1.5);
 log('mtn rock  ', rock.hex);
 s.tool('knife-10', 1.5).set({ pressure: 0.85 });
 
@@ -466,13 +466,13 @@ for (const [x, y, len] of [
 await stage('water');
 
 // ------------------------------------------------- 10. banks and foreground
-mixFor([['titanium-white', 20], ['yellow-ochre', 2], ['van-dyke-brown', 1]], 'knife-10');
+mixFor([['titanium-white', 20], ['yellow-ochre', 1], ['van-dyke-brown', 1], ['midnight-black', 1]], 'knife-10', 0.9);
 s.tool('knife-10', 0.9).set({ pressure: 0.5 });
 for (const [x, y, len] of [[1150, 952, 250], [1206, 1000, 234], [1268, 1052, 172], [1120, 916, 200]]) {
   s.stroke([[x, y], [x + len, y + 20]], { step: 7 });
 }
 // Rocks at the near bank, bottom centre-left.
-mixFor([['van-dyke-brown', 3], ['midnight-black', 2], ['titanium-white', 3]], 'knife-5');
+mixFor([['van-dyke-brown', 3], ['midnight-black', 2], ['titanium-white', 3]], 'knife-5', 0.6);
 s.tool('knife-5', 0.6).set({ pressure: 0.6 });
 for (const [x, y, w] of [[640, 1020, 60], [700, 1046, 70], [764, 1026, 54], [596, 1052, 48]]) {
   s.stroke([[x - w / 2, y], [x + w / 2, y + 10]], { step: 6 });
