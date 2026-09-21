@@ -70,9 +70,9 @@ const skyWarm = mixFor([['titanium-white', 40], ['yellow-ochre', 1], ['van-dyke-
 log('sky warm  ', skyWarm.hex);
 band(320, 560, 24, 0.5);
 
-const skyPink = mixFor([['titanium-white', 40], ['bright-red', 1], ['van-dyke-brown', 1], ['midnight-black', 1]], 'brush-2inch', 2.0);
+const skyPink = mixFor([['titanium-white', 70], ['bright-red', 1], ['van-dyke-brown', 2], ['midnight-black', 1]], 'brush-2inch', 2.0);
 log('sky pink  ', skyPink.hex);
-band(420, 620, 26, 0.5);
+band(470, 600, 26, 0.42);
 
 // Blend with a clean brush, in both diagonals and in both directions.
 //
@@ -217,42 +217,46 @@ for (let i = 0; i < ridge.length - 1; i++) {
 // their top edge, which is the whole point of pulling them that way.
 await stage('mountain-mass');
 
-// Snow on the faces that catch the light. It goes on the same way the mass
-// did -- down the fall line, so the mark lies parallel to the ridge -- but
-// several times over each face. One pull of white onto a thick wet dark moves
-// it about a third of the way, which is right: you go back over it, and the
-// part that does not quite cover is the grey the mountain needs anyway.
+// Snow on the faces that catch the light -- laid HEAVILY, because the value
+// range is what makes a snow peak read as one. Measured against the reference,
+// the last attempt's mountain was a uniform mid-grey: the right range overall
+// but none of it in the mountain itself, where the reference runs from almost
+// white down to near-black rock. So the snow goes on five times over the upper
+// two thirds of each lit face, and the rock is cut back in afterwards rather
+// than left to show through.
 const snowLit = mixFor([['titanium-white', 60], ['phthalo-blue', 1]], 'knife-10', 1.2);
 log('snow lit  ', snowLit.hex);
-s.set({ pressure: 0.62 });
+s.set({ pressure: 0.66 });
 const PEAK2 = 10;
-for (let i = 0; i < ridge.length - 1; i++) {
+const fallLine = (i) => {
   const [x0, y0] = ridge[i];
   const [x1, y1] = ridge[i + 1];
   const len = Math.hypot(x1 - x0, y1 - y0) || 1;
   let nx = (y1 - y0) / len;
   let ny = -(x1 - x0) / len;
   if (ny < 0) { nx = -nx; ny = -ny; }
+  return { x0, y0, x1, y1, nx, ny };
+};
+for (let i = 0; i < ridge.length - 1; i++) {
+  const { x0, y0, x1, y1, nx, ny } = fallLine(i);
   const out = Math.abs(i - PEAK2) / (i < PEAK2 ? PEAK2 : ridge.length - 2 - PEAK2);
-  // Snow lies on the faces that turn towards the light, which here is up and
-  // to the left, and it runs out before the foot of the mountain.
-  const lit = i < PEAK2 ? 1.0 : 0.55;
-  const reach = 300 * (1 - out * 0.6) * lit;
-  if (reach < 30) continue;
-  for (let pass = 0; pass < 3; pass++) {
+  const lit = i < PEAK2 ? 1.0 : 0.6;
+  const reach = 240 * (1 - out * 0.55) * lit;
+  if (reach < 26) continue;
+  for (let pass = 0; pass < 5; pass++) {
     for (let k = 0; k < 2; k++) {
       const t = (k + 0.5) / 2;
       const sx = lerp(x0, x1, t) + jit(6);
       const sy = lerp(y0, y1, t) + jit(3);
-      const r = reach * (0.55 + rnd() * 0.55);
-      s.stroke([[sx, sy], [sx + nx * r + jit(20), sy + ny * r]], { step: 9 });
+      const r = reach * (0.6 + rnd() * 0.5);
+      s.stroke([[sx, sy], [sx + nx * r + jit(16), sy + ny * r]], { step: 9 });
     }
   }
 }
 
 // The shoulder of snow the mountain stands on, sweeping left and down.
 s.tool('knife-10', 1.7).set({ pressure: 0.62 });
-for (let pass = 0; pass < 2; pass++) {
+for (let pass = 0; pass < 3; pass++) {
   for (let x = 120; x < 860; x += 30) {
     const top = lerp(560, 500, Math.min(1, (x - 120) / 500)) + jit(24);
     s.stroke([[x, top], [x + jit(36), top + 110 + rnd() * 90]], { step: 8 });
@@ -262,24 +266,37 @@ await stage('mountain-snow');
 
 // Shadow faces: the right of each spine, cooler and darker than the snow but
 // nowhere near the rock.
-const snowShade = mixFor([['titanium-white', 22], ['phthalo-blue', 1], ['midnight-black', 1]], 'knife-5');
+const snowShade = mixFor([['titanium-white', 22], ['phthalo-blue', 1], ['midnight-black', 1]], 'knife-5', 0.85);
 log('snow shade', snowShade.hex);
-s.tool('knife-5', 0.85).set({ pressure: 0.5 });
-for (const [x, y, dx, dy] of [
-  [615, 256, 52, 165], [578, 284, 44, 140], [545, 310, 40, 120],
-  [470, 298, 48, 145], [442, 324, 40, 118], [400, 364, 44, 100],
-  [648, 304, -34, 150], [706, 356, -30, 120], [790, 374, -30, 105], [900, 410, -30, 90],
-]) {
-  s.stroke([[x, y], [x + dx, y + dy]], { step: 6 });
+s.set({ pressure: 0.5 });
+for (let i = 0; i < ridge.length - 1; i++) {
+  if (i < PEAK2) continue;          // the right shoulder turns away from the light
+  const { x0, y0, nx, ny } = fallLine(i);
+  for (let pass = 0; pass < 2; pass++) {
+    const r = 150 + rnd() * 110;
+    s.stroke([[x0 + jit(6), y0 + jit(3)], [x0 + nx * r + jit(16), y0 + ny * r]], { step: 7 });
+  }
 }
-// A few rock breaks in the snow, small and dark, following the fall line.
-s.tool('knife-5', 0.34).set({ pressure: 0.55 });
-mixFor([['titanium-white', 2], ['midnight-black', 4], ['phthalo-blue', 1], ['van-dyke-brown', 1]], 'knife-5');
-for (let i = 0; i < 46; i++) {
-  const t = rnd();
-  const x = lerp(300, 1060, t) + jit(40);
-  const y = lerp(330, 560, t) + rnd() * 130;
-  s.stroke([[x, y], [x + jit(18), y + 16 + rnd() * 34]], { step: 5 });
+
+// Rock. Cut back into the snow along the fall line -- thin, many, radiating
+// from the ridge the way the strata actually run. This is where the dark end
+// of the mountain's value range comes from.
+mixFor([['titanium-white', 2], ['midnight-black', 4], ['phthalo-blue', 1], ['van-dyke-brown', 1]], 'knife-5', 0.26);
+s.set({ pressure: 0.55 });
+for (let i = 0; i < ridge.length - 1; i++) {
+  const { x0, y0, x1, y1, nx, ny } = fallLine(i);
+  const n = 4 + Math.round(rnd() * 3);
+  for (let k = 0; k < n; k++) {
+    const t = rnd();
+    const sx = lerp(x0, x1, t) + jit(10);
+    const sy = lerp(y0, y1, t) + jit(6);
+    const start = 20 + rnd() * 90;
+    const run = 30 + rnd() * 80;
+    s.stroke(
+      [[sx + nx * start, sy + ny * start], [sx + nx * (start + run) + jit(14), sy + ny * (start + run)]],
+      { step: 5 }
+    );
+  }
 }
 await stage('mountain-detail');
 
@@ -415,13 +432,11 @@ await stage('bushes');
 // ------------------------------------------------------------- 9. the water
 // Still water is the sky, upside down and a little darker. Lay it flat, pull
 // the bank colours straight down into it, then cut across to still it.
-const waterBase = mixFor([['titanium-white', 22], ['sap-green', 1], ['phthalo-blue', 1]], 'brush-2inch', 1.5);
+const waterBase = mixFor([['titanium-white', 9], ['sap-green', 1], ['phthalo-blue', 1]], 'brush-2inch', 1.5);
 log('water     ', waterBase.hex);
 s.set({ pressure: 0.5 });
-// Right across, and right down to the bottom edge. The banks and the bushes
-// go over the ends of it afterwards; what must not happen is bare canvas left
-// showing, and the last attempt left the water sitting in the middle of the
-// picture like a swimming pool with white all round it.
+// Right across, and right down to the bottom edge. The banks go over the ends
+// of it afterwards; what must not happen is bare canvas left showing.
 for (let y = 852; y < H + 30; y += 18) {
   for (let sec = 0; sec < 3; sec++) {
     const a = -60 + sec * 520;
@@ -430,20 +445,24 @@ for (let y = 852; y < H + 30; y += 18) {
     s.stroke(sec % 2 ? [[b, yy], [a, yy]] : [[a, yy], [b, yy]], { step: 34 });
   }
 }
-// Darker towards the near bank: water takes the sky at a distance and the
-// bottom of the lake close to.
-mixFor([['titanium-white', 10], ['sap-green', 2], ['phthalo-blue', 1], ['yellow-ochre', 1]], 'brush-2inch', 1.5);
-s.set({ pressure: 0.4 });
-for (let y = 990; y < H + 30; y += 18) {
-  s.stroke([[1460, y + jit(4)], [-60, y + jit(4)]], { step: 34 });
+// Water takes the sky at a distance and the bottom of the lake close to, so it
+// darkens towards the near bank. Measured against the reference, the whole
+// bottom third of the last attempt was half again too light -- L 0.75 against
+// 0.38 -- and this is most of that.
+const waterNear = mixFor([['titanium-white', 4], ['sap-green', 2], ['phthalo-blue', 1], ['midnight-black', 1]], 'brush-2inch', 1.5);
+log('water near', waterNear.hex);
+s.set({ pressure: 0.45 });
+for (let y = 946; y < H + 30; y += 16) {
+  const t = Math.min(1, (y - 946) / 150);
+  s.set({ pressure: 0.25 + 0.3 * t });
+  s.stroke(y % 32 ? [[1460, y + jit(4)], [-60, y + jit(4)]] : [[-60, y + jit(4)], [1460, y + jit(4)]], { step: 34 });
 }
 
 // Reflections: pull the bank colours straight down, then cut across.
-s.set({ pressure: 0.42 });
 for (const [parts, xs] of [
-  [[['sap-green', 3], ['midnight-black', 3], ['cadmium-yellow', 2], ['van-dyke-brown', 1]], [330, 430, 520, 600, 690, 780, 860, 940]],
-  [[['yellow-ochre', 3], ['titanium-white', 4], ['van-dyke-brown', 1]], [370, 470, 560, 900, 980, 1060, 1140]],
-  [[['van-dyke-brown', 3], ['bright-red', 1], ['titanium-white', 2]], [1020, 1100, 1160, 1240]],
+  [[['sap-green', 3], ['midnight-black', 4], ['cadmium-yellow', 2], ['van-dyke-brown', 1]], [330, 430, 520, 600, 690, 780, 860, 940]],
+  [[['yellow-ochre', 3], ['titanium-white', 2], ['van-dyke-brown', 2]], [370, 470, 560, 900, 980, 1060, 1140]],
+  [[['van-dyke-brown', 3], ['bright-red', 1], ['midnight-black', 1]], [1020, 1100, 1160, 1240]],
 ]) {
   mixFor(parts, 'brush-1inch', 0.6);
   s.set({ pressure: 0.42 });
@@ -455,25 +474,53 @@ s.tool('brush-2inch', 1.5).set({ pressure: 0.26 });
 for (let y = 860; y < H + 30; y += 12) {
   s.stroke(y % 24 ? [[-60, y], [1500, y]] : [[1500, y], [-60, y]], { step: 34 });
 }
-// A few still, light ripples.
+// A few still, light ripples, and only in the open water.
 s.paint('titanium-white');
-s.tool('brush-1inch', 0.3).set({ pressure: 0.28 });
-for (const [x, y, len] of [
-  [430, 920, 260], [700, 968, 300], [930, 1020, 260], [560, 1000, 200], [820, 1060, 240],
-]) {
+s.tool('brush-1inch', 0.28).set({ pressure: 0.24 });
+for (const [x, y, len] of [[470, 916, 240], [700, 962, 280], [880, 1004, 220], [600, 988, 190]]) {
   s.stroke([[x, y], [x + len, y + jit(3)]], { step: 12 });
 }
 await stage('water');
 
 // ------------------------------------------------- 10. banks and foreground
+// LAND first. The bushes in the near corners were being tapped straight onto
+// the lake, so they floated on the water with nothing under them -- and the
+// whole bottom third of the picture came out L 0.75 against the reference's
+// 0.38. The near bank is the darkest, nearest thing in the painting.
+const nearLand = mixFor([['van-dyke-brown', 3], ['sap-green', 2], ['midnight-black', 3], ['yellow-ochre', 1]], 'brush-2inch', 1.4);
+log('near land ', nearLand.hex);
+s.set({ pressure: 0.6 });
+// Left bank: a wedge running down from the shore into the near corner.
+for (let i = 0; i < 16; i++) {
+  const t = i / 15;
+  const y = lerp(896, H + 30, t);
+  const right = lerp(250, 520, Math.pow(t, 0.7));
+  s.stroke(i % 2 ? [[right, y], [-70, y + jit(6)]] : [[-70, y], [right, y + jit(6)]], { step: 26 });
+}
+// Right bank: the sandy spit the reference runs out into the water.
+for (let i = 0; i < 14; i++) {
+  const t = i / 13;
+  const y = lerp(926, H + 30, t);
+  const left = lerp(1210, 940, Math.pow(t, 0.8));
+  s.stroke(i % 2 ? [[left, y], [1510, y + jit(6)]] : [[1510, y], [left, y + jit(6)]], { step: 26 });
+}
+// Where the land meets the water, softened so it is a shore and not a cut.
+s.clean();
+s.tool('util-blender', 1.0).set({ pressure: 0.24 });
+for (let i = 0; i < 5; i++) {
+  s.stroke([[-60, 900 + i * 12], [540, 1000 + i * 14]], { step: 26 });
+  s.stroke([[1510, 930 + i * 12], [940, 1030 + i * 14]], { step: 26 });
+}
+
+// The pale sand along the right spit, catching the light off the water.
 mixFor([['titanium-white', 34], ['yellow-ochre', 1], ['van-dyke-brown', 2], ['midnight-black', 1]], 'knife-10', 0.9);
-s.tool('knife-10', 0.9).set({ pressure: 0.5 });
+s.set({ pressure: 0.5 });
 for (const [x, y, len] of [[1150, 952, 250], [1206, 1000, 234], [1268, 1052, 172], [1120, 916, 200]]) {
   s.stroke([[x, y], [x + len, y + 20]], { step: 7 });
 }
 // Rocks at the near bank, bottom centre-left.
 mixFor([['van-dyke-brown', 3], ['midnight-black', 2], ['titanium-white', 3]], 'knife-5', 0.6);
-s.tool('knife-5', 0.6).set({ pressure: 0.6 });
+s.set({ pressure: 0.6 });
 for (const [x, y, w] of [[640, 1020, 60], [700, 1046, 70], [764, 1026, 54], [596, 1052, 48]]) {
   s.stroke([[x - w / 2, y], [x + w / 2, y + 10]], { step: 6 });
 }
@@ -483,21 +530,21 @@ for (const [x, y, w] of [[640, 1014, 50], [700, 1040, 60], [764, 1020, 44]]) {
   s.stroke([[x - w / 2, y], [x + w / 2, y + 4]], { step: 6 });
 }
 
-// Grass and bushes across the very front, left corner and right bank.
+// Grass and bushes ON the land, darkest first.
 for (const parts of [
+  [['sap-green', 2], ['midnight-black', 4], ['van-dyke-brown', 2]],
   [['sap-green', 2], ['cadmium-yellow', 3], ['midnight-black', 2], ['yellow-ochre', 2]],
-  [['sap-green', 2], ['cadmium-yellow', 3], ['midnight-black', 1], ['yellow-ochre', 2]],
-  [['yellow-ochre', 3], ['titanium-white', 4], ['van-dyke-brown', 1]],
-  [['yellow-ochre', 3], ['van-dyke-brown', 1], ['titanium-white', 2]],
+  [['yellow-ochre', 3], ['titanium-white', 3], ['van-dyke-brown', 2]],
+  [['cadmium-yellow', 2], ['titanium-white', 4], ['yellow-ochre', 2]],
 ]) {
   mixFor(parts, 'brush-round', 0.28);
   s.set({ pressure: 0.6 });
-  for (let i = 0; i < 130; i++) {
-    const left = rnd() < 0.55;
-    // Right into the corners: the very front of the picture is the nearest
-    // thing in it and there should be no canvas showing through it.
-    const x = left ? rnd() * 420 - 20 : 1060 + rnd() * 400;
-    const y = (left ? 880 : 910) + rnd() * 220;
+  for (let i = 0; i < 120; i++) {
+    const left = rnd() < 0.58;
+    // Inside the banks that were just laid, so nothing is tapped onto water.
+    const t = rnd();
+    const x = left ? rnd() * lerp(250, 520, t) - 20 : 1510 - rnd() * (1510 - lerp(1210, 940, t));
+    const y = lerp(left ? 896 : 926, H + 20, t) + jit(26);
     s.tap([x, y]);
   }
 }
