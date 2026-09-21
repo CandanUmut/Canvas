@@ -1567,8 +1567,9 @@ function makeScript() {
     brush() {
       return engine.sampleReservoir();
     },
+    /** What is on the canvas at a point, in the same coordinates as a stroke. */
     at(x, y) {
-      return engine.samplePaint(canvasSurface, x, canvasSurface.height - y);
+      return engine.samplePaint(canvasSurface, x * k(), canvasSurface.height - y * k());
     },
     /** The finished picture as raw RGBA, top-down. */
     pixels() {

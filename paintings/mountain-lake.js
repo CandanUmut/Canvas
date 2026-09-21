@@ -77,20 +77,22 @@ band(420, 620, 26, 0.5);
 // Blend with a clean brush, in both diagonals and in both directions. Working
 // left to right every time carries the paint one way and leaves the far side
 // starved; the criss-cross has to actually cross.
+//
+// Lightly, and not many times. Eighty-odd passes laid on a regular grid left a
+// lattice of lozenges across the sky where the diagonals crossed each other in
+// the same places over and over. The paths are jittered so nothing lines up,
+// and the whole thing is six passes, which is about what it takes by hand.
 s.clean();
-s.set({ pressure: 0.35 });
-for (let i = 0; i < 14; i++) {
-  const y = lerp(40, 600, i / 13);
+s.set({ pressure: 0.3 });
+for (let i = 0; i < 6; i++) {
+  const y = lerp(60, 580, i / 5) + jit(26);
+  const dir = i % 2 ? 1 : -1;
   for (let sec = 0; sec < 3; sec++) {
-    const a = -60 + sec * 520;
+    const a = -60 + sec * 520 + jit(40);
     const b = a + 640;
-    if (i % 2) {
-      s.stroke([[a, y + 80], [b, y - 80]], { step: 34 });
-      s.stroke([[b, y - 80], [a, y + 80]], { step: 34 });
-    } else {
-      s.stroke([[b, y + 80], [a, y - 80]], { step: 34 });
-      s.stroke([[a, y - 80], [b, y + 80]], { step: 34 });
-    }
+    const rise = 70 + jit(24);
+    s.stroke([[a, y + rise * dir], [b, y - rise * dir]], { step: 34 });
+    s.stroke([[b, y - rise * dir * 0.6 + jit(20)], [a, y + rise * dir * 0.6 + jit(20)]], { step: 34 });
   }
 }
 await stage('sky');

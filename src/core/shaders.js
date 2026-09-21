@@ -303,12 +303,26 @@ float layShare(float load) {
   // A palette is a source, not a surface being painted: a tool put into a pile
   // fills from it however much it is already carrying.
   if (uPalette > 0.5) return 0.0;
-  return smoothstep(uKnee * 0.5, uKnee * 1.5, load);
+  // Judged on the film at the TIP, in canvas layers, not on the tool's whole
+  // capacity. A 2" brush holds about sixteen layers and a wet sky is about
+  // one, so against the whole reservoir a clean brush could lift the entire
+  // sky and still not be full enough to lay any of it back down -- it only
+  // ever took paint off. Blending a sky scrubbed a lattice of tracks through
+  // it where the criss-cross strokes crossed and lifted twice.
+  //
+  // This is the mechanism blending actually works by: a bristle picks paint up
+  // at one dab and puts it down over the dabs that follow, further along the
+  // stroke.
+  float film = clamp(load * uHold / max(uSoak, 1e-4), 0.0, 1.0);
+  return smoothstep(uKnee * 0.5, uKnee * 1.5, film);
 }
 
 // Volume this dab lays onto one surface pixel.
 float giveVolume(float bristle, float contact, float load) {
-  return uFlow * uDeplete * bristle * contact * layShare(load);
+  // Two separate things: how much is left to lay (a tool runs out), and which
+  // way paint is moving at all.
+  return uFlow * uDeplete * bristle * contact
+       * min(load / max(uKnee, 1e-4), 1.0) * layShare(load);
 }
 
 // Pickup, as a change in the bristle's fill fraction. A texel's own holding is
@@ -319,7 +333,10 @@ float giveVolume(float bristle, float contact, float load) {
 float takeLoad(float contact, float volume, float wetness, float load) {
   float here = penetrated(volume, contact);
   float avail = clamp(here / max(uSoak, 1e-4), 0.0, 1.0);
-  float amt = uPickup * uDeplete * contact * avail * wetness * (1.0 - load)
+  // Room left in the film at the tip, not in the whole reservoir -- the same
+  // reason layShare goes by the film.
+  float film = clamp(load * uHold / max(uSoak, 1e-4), 0.0, 1.0);
+  float amt = uPickup * uDeplete * contact * avail * wetness * (1.0 - film)
             * (1.0 - layShare(load));
   // A pass can lift at most this share of the film it crosses. A dry brush
   // dragged over wet paint takes some of it up; it does not take nearly all
@@ -338,7 +355,8 @@ float takeVolume(float bristle, float contact, float volume, float wetness, floa
 }
 
 float giveLoad(float contact, float load) {
-  return uFlow * uDeplete * contact * layShare(load) / max(uHold, 1e-4);
+  return uFlow * uDeplete * contact
+       * min(load / max(uKnee, 1e-4), 1.0) * layShare(load) / max(uHold, 1e-4);
 }
 `;
 
