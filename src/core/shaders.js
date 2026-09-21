@@ -337,8 +337,14 @@ float giveVolume(float bristle, float contact, float load) {
 float takeLoad(float contact, float volume, float wetness, float load) {
   float here = penetrated(volume, contact);
   float avail = clamp(here / max(uSoak, 1e-4), 0.0, 1.0);
-  // Room left in the film at the tip, not in the whole reservoir.
-  float amt = uPickup * uDeplete * contact * avail * wetness * (1.0 - tipFilm(load))
+  // How much room is left. On a painting surface only the tip is in contact,
+  // so it is the film there that has room or has not. A brush pressed into a
+  // PILE fills its whole bristle bed -- that is what a pile is -- and going by
+  // the tip film there stopped it loading at about six per cent, so whatever
+  // it crossed first swamped the mixture and every colour came off the board
+  // nearly black.
+  float room = 1.0 - mix(tipFilm(load), load, uPalette);
+  float amt = uPickup * uDeplete * contact * avail * wetness * room
             * (1.0 - layShare(load));
   // A pass can lift at most this share of the film it crosses. A dry brush
   // dragged over wet paint takes some of it up; it does not take nearly all
