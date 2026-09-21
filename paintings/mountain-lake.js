@@ -58,19 +58,19 @@ function band(y0, y1, step, pressure) {
   }
 }
 
-const skyTop = s.mix([['titanium-white', 16], ['phthalo-blue', 2], ['midnight-black', 1]]);
+const skyTop = mixFor([['titanium-white', 16], ['phthalo-blue', 2], ['midnight-black', 1]], 'brush-2inch', 2.0);
 log('sky top   ', skyTop.hex);
 band(-20, 210, 24, 0.6);
 
-const skyMid = s.mix([['titanium-white', 16], ['phthalo-blue', 1], ['midnight-black', 1]]);
+const skyMid = mixFor([['titanium-white', 16], ['phthalo-blue', 1], ['midnight-black', 1]], 'brush-2inch', 2.0);
 log('sky mid   ', skyMid.hex);
 band(170, 340, 24, 0.6);
 
-const skyWarm = s.mix([['titanium-white', 30], ['yellow-ochre', 1], ['van-dyke-brown', 1], ['bright-red', 1], ['midnight-black', 1]]);
+const skyWarm = mixFor([['titanium-white', 26], ['yellow-ochre', 2], ['van-dyke-brown', 1], ['bright-red', 1], ['midnight-black', 2]], 'brush-2inch', 2.0);
 log('sky warm  ', skyWarm.hex);
 band(320, 560, 24, 0.5);
 
-const skyPink = s.mix([['titanium-white', 40], ['bright-red', 1], ['van-dyke-brown', 1], ['midnight-black', 1]]);
+const skyPink = mixFor([['titanium-white', 40], ['bright-red', 1], ['van-dyke-brown', 1], ['midnight-black', 1]], 'brush-2inch', 2.0);
 log('sky pink  ', skyPink.hex);
 band(420, 620, 26, 0.5);
 
@@ -132,7 +132,7 @@ function cloudMass(cx, cy, rx, ry, density, r0) {
 
 // The grey mass first: a cloud's shadow is still full of light, and the lit
 // tops have to sit ON something.
-const cloudGrey = s.mix([['titanium-white', 26], ['midnight-black', 2], ['phthalo-blue', 1]]);
+const cloudGrey = mixFor([['titanium-white', 26], ['midnight-black', 2], ['phthalo-blue', 1]], 'brush-2inch', 0.9);
 log('cloud grey', cloudGrey.hex);
 s.tool('brush-2inch', 0.9).set({ pressure: 0.55 });
 cloudMass(1050, 130, 400, 105, 1.0, 26);
@@ -140,7 +140,7 @@ cloudMass(1380, 150, 180, 95, 1.0, 26);
 cloudMass(830, 95, 150, 65, 0.9, 22);
 
 // Then the lit tops, overlapping the upper edge of the grey.
-const cloudLit = s.mix([['titanium-white', 40], ['yellow-ochre', 1], ['midnight-black', 1]]);
+const cloudLit = mixFor([['titanium-white', 40], ['yellow-ochre', 1], ['midnight-black', 1]], 'brush-2inch', 0.8);
 log('cloud lit ', cloudLit.hex);
 s.tool('brush-2inch', 0.8).set({ pressure: 0.6 });
 cloudMass(1040, 75, 370, 60, 1.1, 22);
