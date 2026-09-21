@@ -239,7 +239,11 @@ float hidingPower(float give, float under, float wet) {
   // dark blue sky left it 93% white although it laid barely a quarter of a
   // layer, so every stroke sat on the picture like a decal and "let it dry"
   // changed nothing about how much the next layer covered.
-  float o = uOpacity * uOpacity * (1.0 - 0.85 * clamp(wet, 0.0, 1.0));
+  // Not all the way to nothing. An opaque pigment laid on THICKLY -- a knife
+  // pressing a roll of Titanium White onto a wet dark mountain -- does sit on
+  // top of what is under it, and at 0.85 snow could not be got onto a mountain
+  // at all: one pull moved it 18% towards white and the peak stayed navy.
+  float o = uOpacity * uOpacity * (1.0 - 0.70 * clamp(wet, 0.0, 1.0));
   // A thin film cannot bury a thick pile. Without this, one pass of a white
   // brush turned a whole pile of Phthalo Blue on the palette 88% white and
   // mixing ran backwards. But the reference depth matters: a canvas carries

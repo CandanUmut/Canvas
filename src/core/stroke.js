@@ -229,7 +229,12 @@ export class StrokeRunner {
       smudge: (t.smudge ?? 0) * settings.blendScale,
       // Thinner makes paint flow; it should not erase the pigment. A thinned
       // liner stroke of Van Dyke Brown is still a dark line.
-      opacity: (paint.opacity ?? 1) * (1 - thinner * 0.45),
+      // The tool's own opacity, not the tube's. They are the same the moment
+      // you pick a colour off the palette board, but a mixture you made, or a
+      // colour picked up off the canvas, carries its own -- and the engine has
+      // been tracking that all along and then throwing it away in favour of
+      // whichever tube happened to be selected in the panel.
+      opacity: (this.engine.brush.opacity ?? paint.opacity ?? 1) * (1 - thinner * 0.45),
       body: paint.body * (1 - thinner * 0.7),
       wetness: paint.wetness ?? 1,
       clearMix: paint.clear ? 1 : 0,
