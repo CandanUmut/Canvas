@@ -1513,8 +1513,12 @@ function makeScript() {
         const paint = PAINTS_BY_ID[id];
         const w = (span * n) / total;
         // Enough piles side by side to fill that share of the strip, so the
-        // width a bristle crosses really is the proportion asked for.
-        const r = Math.max(14, Math.min(46, w * 0.55));
+        // width a bristle crosses really is the proportion asked for. The
+        // floor has to stay small: almost every landscape colour is a pile of
+        // white with a touch of something in it, and a floor of half an inch
+        // turned "thirty parts white to one of Phthalo Blue" into about six to
+        // one -- which is the difference between a sky and a swimming pool.
+        const r = Math.max(4, Math.min(46, w * 0.55));
         const count = Math.max(1, Math.round(w / (r * 1.2)));
         for (let i = 0; i < count; i++) {
           engine.blob(paletteSurface, {

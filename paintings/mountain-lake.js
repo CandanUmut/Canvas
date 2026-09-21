@@ -26,21 +26,21 @@ await stage('base');
 // worked together with a clean brush so no band shows a seam.
 s.tool('brush-2inch', 2.0);
 
-const skyTop = s.mix([['titanium-white', 7], ['phthalo-blue', 2], ['midnight-black', 1]]);
+const skyTop = s.mix([['titanium-white', 16], ['phthalo-blue', 2], ['midnight-black', 1]]);
 log('sky top   ', skyTop.hex);
 s.set({ pressure: 0.6 });
 for (let y = -20; y < 210; y += 24) s.stroke([[-60, y + jit(8)], [W + 60, y + jit(8)]], { step: 40 });
 
-const skyMid = s.mix([['titanium-white', 12], ['phthalo-blue', 1]]);
+const skyMid = s.mix([['titanium-white', 16], ['phthalo-blue', 1], ['midnight-black', 1]]);
 log('sky mid   ', skyMid.hex);
 for (let y = 170; y < 340; y += 24) s.stroke([[-60, y + jit(8)], [W + 60, y + jit(8)]], { step: 40 });
 
-const skyWarm = s.mix([['titanium-white', 22], ['yellow-ochre', 2], ['bright-red', 1]]);
+const skyWarm = s.mix([['titanium-white', 60], ['yellow-ochre', 2], ['van-dyke-brown', 1], ['midnight-black', 1]]);
 log('sky warm  ', skyWarm.hex);
 s.set({ pressure: 0.5 });
 for (let y = 320; y < 560; y += 24) s.stroke([[-60, y + jit(10)], [W + 60, y + jit(10)]], { step: 40 });
 
-const skyPink = s.mix([['titanium-white', 26], ['bright-red', 1], ['yellow-ochre', 1]]);
+const skyPink = s.mix([['titanium-white', 60], ['bright-red', 1], ['yellow-ochre', 2]]);
 log('sky pink  ', skyPink.hex);
 for (let y = 420; y < 620; y += 26) s.stroke([[-60, y + jit(10)], [W + 60, y + jit(10)]], { step: 40 });
 
@@ -58,7 +58,7 @@ await stage('sky');
 // --------------------------------------------------------------- 3. clouds
 // A bank of cumulus across the top right: lit on top, grey underneath, and
 // the bottom edge pulled out into the sky so nothing has a cut edge.
-const cloudLit = s.mix([['titanium-white', 30], ['yellow-ochre', 1]]);
+const cloudLit = s.mix([['titanium-white', 40], ['yellow-ochre', 1], ['midnight-black', 1]]);
 log('cloud lit ', cloudLit.hex);
 s.tool('brush-2inch', 1.1).set({ pressure: 0.62 });
 const puff = (x, y, r, squash) => {
@@ -83,7 +83,7 @@ for (const [x, y, len] of [[70, 55, 340], [150, 120, 300], [330, 30, 320], [430,
 }
 
 // The bellies. Grey, not black -- a cloud's shadow is still full of light.
-const cloudGrey = s.mix([['titanium-white', 7], ['midnight-black', 1], ['phthalo-blue', 1]]);
+const cloudGrey = s.mix([['titanium-white', 18], ['midnight-black', 2], ['phthalo-blue', 1]]);
 log('cloud grey', cloudGrey.hex);
 s.tool('brush-2inch', 1.0).set({ pressure: 0.5 });
 for (const [x, y, r] of [
@@ -117,7 +117,7 @@ const ridge = [
   [900, 402], [962, 418], [1030, 444], [1104, 478], [1180, 512], [1262, 550], [1350, 592],
 ];
 
-const rock = s.mix([['titanium-white', 2], ['midnight-black', 2], ['phthalo-blue', 1]], { tool: 'knife-10' });
+const rock = s.mix([['titanium-white', 3], ['midnight-black', 3], ['phthalo-blue', 1]], { tool: 'knife-10' });
 log('mtn rock  ', rock.hex);
 s.tool('knife-10', 1.5).set({ pressure: 0.85 });
 
@@ -152,7 +152,7 @@ await stage('mountain-mass');
 
 // Snow on the faces that catch the light -- the left of every spine. Pulled
 // DOWN from the ridge, and never quite to the bottom, so rock stays showing.
-const snowLit = s.mix([['titanium-white', 26], ['phthalo-blue', 1]], { tool: 'knife-10' });
+const snowLit = s.mix([['titanium-white', 60], ['phthalo-blue', 1]], { tool: 'knife-10' });
 log('snow lit  ', snowLit.hex);
 s.tool('knife-10', 1.2).set({ pressure: 0.6 });
 const spines = [
@@ -175,7 +175,7 @@ await stage('mountain-snow');
 
 // Shadow faces: the right of each spine, cooler and darker than the snow but
 // nowhere near the rock.
-const snowShade = s.mix([['titanium-white', 8], ['phthalo-blue', 1], ['midnight-black', 1]], { tool: 'knife-5' });
+const snowShade = s.mix([['titanium-white', 22], ['phthalo-blue', 1], ['midnight-black', 1]], { tool: 'knife-5' });
 log('snow shade', snowShade.hex);
 s.tool('knife-5', 0.85).set({ pressure: 0.5 });
 for (const [x, y, dx, dy] of [
@@ -187,7 +187,7 @@ for (const [x, y, dx, dy] of [
 }
 // A few rock breaks in the snow, small and dark, following the fall line.
 s.tool('knife-5', 0.34).set({ pressure: 0.55 });
-s.mix([['midnight-black', 2], ['van-dyke-brown', 1], ['phthalo-blue', 1]], { tool: 'knife-5' });
+s.mix([['titanium-white', 2], ['midnight-black', 4], ['phthalo-blue', 1], ['van-dyke-brown', 1]], { tool: 'knife-5' });
 for (let i = 0; i < 46; i++) {
   const t = rnd();
   const x = lerp(300, 1060, t) + jit(40);
@@ -204,7 +204,7 @@ await stage('mountain-mist');
 
 // --------------------------------------------------- 5. distant small peaks
 s.tool('knife-5', 0.8).set({ pressure: 0.5 });
-s.mix([['titanium-white', 10], ['phthalo-blue', 1], ['midnight-black', 1]], { tool: 'knife-5' });
+s.mix([['titanium-white', 26], ['phthalo-blue', 1], ['midnight-black', 1]], { tool: 'knife-5' });
 for (const [px, py, half] of [
   [470, 690, 95], [560, 655, 80], [640, 672, 74], [806, 632, 104],
   [888, 668, 84], [1052, 640, 112], [1180, 678, 90],
@@ -284,9 +284,9 @@ const clumps = [];
 for (let x = -20; x < W + 20; x += 30) clumps.push([x, bank(x)]);
 
 for (const [parts, n] of [
-  [[['sap-green', 4], ['midnight-black', 1], ['cadmium-yellow', 1]], 5],
-  [[['yellow-ochre', 3], ['cadmium-yellow', 2], ['titanium-white', 1]], 5],
-  [[['cadmium-yellow', 4], ['titanium-white', 2], ['yellow-ochre', 1]], 4],
+  [[['sap-green', 2], ['midnight-black', 2], ['yellow-ochre', 3]], 5],
+  [[['yellow-ochre', 3], ['titanium-white', 6], ['van-dyke-brown', 1]], 5],
+  [[['cadmium-yellow', 2], ['titanium-white', 6], ['yellow-ochre', 2]], 4],
 ]) {
   s.mix(parts, { tool: 'brush-round' });
   for (const [x, y] of clumps) {
@@ -295,23 +295,23 @@ for (const [parts, n] of [
   }
 }
 // A patch of burnt orange on the right bank, where the reference has one.
-s.mix([['bright-red', 3], ['yellow-ochre', 2], ['van-dyke-brown', 1]], { tool: 'brush-round' });
+s.mix([['bright-red', 1], ['yellow-ochre', 6], ['van-dyke-brown', 2], ['titanium-white', 3]], { tool: 'brush-round' });
 for (let i = 0; i < 30; i++) s.tap([980 + rnd() * 240, 866 + rnd() * 66]);
 await stage('bushes');
 
 // ------------------------------------------------------------- 9. the water
 // Still water is the sky, upside down and a little darker. Lay it flat, pull
 // the bank colours straight down into it, then cut across to still it.
-const waterBase = s.mix([['titanium-white', 9], ['sap-green', 1], ['phthalo-blue', 1]], { tool: 'brush-2inch' });
+const waterBase = s.mix([['titanium-white', 22], ['sap-green', 1], ['phthalo-blue', 1]], { tool: 'brush-2inch' });
 log('water     ', waterBase.hex);
 s.tool('brush-2inch', 1.5).set({ pressure: 0.5 });
 for (let y = 862; y < H + 20; y += 20) s.stroke([[260, y], [1240, y + jit(5)]], { step: 32 });
 
 s.tool('brush-1inch', 0.6).set({ pressure: 0.42 });
 for (const [parts, xs] of [
-  [[['sap-green', 3], ['midnight-black', 1]], [430, 520, 600, 690, 780, 860]],
-  [[['cadmium-yellow', 3], ['yellow-ochre', 2]], [470, 560, 900, 980, 1060]],
-  [[['van-dyke-brown', 2], ['bright-red', 1]], [1020, 1100, 1160]],
+  [[['sap-green', 3], ['midnight-black', 3], ['cadmium-yellow', 2], ['van-dyke-brown', 1]], [430, 520, 600, 690, 780, 860]],
+  [[['yellow-ochre', 3], ['titanium-white', 4], ['van-dyke-brown', 1]], [470, 560, 900, 980, 1060]],
+  [[['van-dyke-brown', 3], ['bright-red', 1], ['titanium-white', 2]], [1020, 1100, 1160]],
 ]) {
   s.mix(parts, { tool: 'brush-1inch' });
   for (const x of xs) s.stroke([[x, 866], [x + jit(10), 966 + rnd() * 90]], { step: 7 });
@@ -329,13 +329,13 @@ for (const [x, y, len] of [[520, 930, 200], [760, 990, 260], [980, 1046, 220], [
 await stage('water');
 
 // ------------------------------------------------- 10. banks and foreground
-s.mix([['titanium-white', 5], ['yellow-ochre', 2], ['van-dyke-brown', 1]], { tool: 'knife-10' });
+s.mix([['titanium-white', 20], ['yellow-ochre', 2], ['van-dyke-brown', 1]], { tool: 'knife-10' });
 s.tool('knife-10', 0.9).set({ pressure: 0.5 });
 for (const [x, y, len] of [[1150, 952, 250], [1206, 1000, 234], [1268, 1052, 172], [1120, 916, 200]]) {
   s.stroke([[x, y], [x + len, y + 20]], { step: 7 });
 }
 // Rocks at the near bank, bottom centre-left.
-s.mix([['van-dyke-brown', 3], ['midnight-black', 1], ['titanium-white', 1]], { tool: 'knife-5' });
+s.mix([['van-dyke-brown', 3], ['midnight-black', 2], ['titanium-white', 3]], { tool: 'knife-5' });
 s.tool('knife-5', 0.6).set({ pressure: 0.6 });
 for (const [x, y, w] of [[640, 1020, 60], [700, 1046, 70], [764, 1026, 54], [596, 1052, 48]]) {
   s.stroke([[x - w / 2, y], [x + w / 2, y + 10]], { step: 6 });
@@ -349,9 +349,9 @@ for (const [x, y, w] of [[640, 1014, 50], [700, 1040, 60], [764, 1020, 44]]) {
 // Grass and bushes across the very front, left corner and right bank.
 s.tool('brush-round', 0.4).set({ pressure: 0.6 });
 for (const parts of [
-  [['sap-green', 3], ['cadmium-yellow', 2], ['midnight-black', 1]],
-  [['cadmium-yellow', 3], ['yellow-ochre', 2]],
-  [['yellow-ochre', 3], ['van-dyke-brown', 1]],
+  [['sap-green', 2], ['cadmium-yellow', 3], ['midnight-black', 1], ['yellow-ochre', 2]],
+  [['yellow-ochre', 3], ['titanium-white', 4], ['van-dyke-brown', 1]],
+  [['yellow-ochre', 3], ['van-dyke-brown', 1], ['titanium-white', 2]],
 ]) {
   s.mix(parts, { tool: 'brush-round' });
   for (let i = 0; i < 70; i++) {
@@ -377,7 +377,7 @@ for (const [x, base, top, w, sz] of [
   evergreen(x, base, top, w, sz);
 }
 // A little light on the near edge of the nearest boughs.
-s.mix([['sap-green', 3], ['cadmium-yellow', 2]], { tool: 'brush-fan' });
+s.mix([['sap-green', 3], ['cadmium-yellow', 2], ['midnight-black', 1]], { tool: 'brush-fan' });
 s.tool('brush-fan', 0.4).set({ pressure: 0.4 });
 for (let i = 0; i < 46; i++) {
   const left = rnd() < 0.5;
