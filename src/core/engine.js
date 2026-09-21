@@ -207,6 +207,12 @@ export class Engine {
     this.loadBrush([0.97, 0.96, 0.94], 1, 0, true, 1);
     this.brush.load = 0;
     this.brush.dirty = false;
+    // A brush you have beaten the devil out of is EMPTY, and has to stay empty
+    // until you dip it again. Leaving the charged colour behind meant the next
+    // stroke's reload filled it straight back up, so cleaning it did nothing at
+    // all -- and cleaning it is how a sky gets blended, how the base of a
+    // mountain gets misted, and how any edge gets softened.
+    this.brush.stock = null;
   }
 
   /**
@@ -216,6 +222,8 @@ export class Engine {
    */
   rechargeBrush(keepDirty = false) {
     const b = this.brush;
+    // Nothing to come back to: the tool was deliberately cleaned.
+    if (!b.stock) return false;
     if (keepDirty) {
       // Keep whatever the tool dragged up; just top the amount back up.
       if (b.load >= 0.92) return false;
