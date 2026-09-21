@@ -54,43 +54,85 @@ function flatMask({ teeth = 26, fray = 0.22, softU = 0.03, softV = 0.30, seed = 
  * Fan brush: bristles splayed from a point below the footprint into separated
  * clumps. Tapping with this is how you paint a whole forest.
  */
-function fanMask({ clumps = 9, spread = 0.66, seed = 2 } = {}) {
+function fanMask({ clumps = 7, spread = 0.66, seed = 2 } = {}) {
   const pivot = -0.42;
+  // Each clump is its own bundle of hairs with its own length, width and
+  // density. What makes a fan brush read as evergreen boughs is the CLEAR AIR
+  // between the bundles -- pack them tightly and every touch stamps one solid
+  // shell, which is exactly what made foliage look like repeated clip-art.
+  const bundles = [];
+  for (let i = 0; i < clumps; i++) {
+    const t = (i + 0.5) / clumps * 2 - 1;
+    bundles.push({
+      t,
+      w: 0.30 + 0.34 * rnd(i, seed + 1),            // half-width, in clump units
+      reach: 0.80 + 0.22 * rnd(i, seed + 2),        // how far the hairs extend
+      dens: 0.72 + 0.28 * rnd(i, seed + 3),
+      lean: (rnd(i, seed + 4) - 0.5) * 0.10,
+    });
+  }
+  const pitch = 2 / clumps;
+
   return (u, v) => {
     const dx = u - 0.5;
     const dy = v - pivot;
     const r = Math.hypot(dx, dy);
-    const t = Math.atan2(dx, dy) / spread; // -1..1 across the fan
-    if (Math.abs(t) > 1.05) return 0;
+    const t = Math.atan2(dx, dy) / spread;
+    if (Math.abs(t) > 1.12) return 0;
 
-    const c = (t * clumps * 0.5 + 0.5) % 1;
-    const cc = c < 0 ? c + 1 : c;
-    const gap = smooth(0, 0.34, cc) * smooth(0, 0.34, 1 - cc);
-    const jitter = 0.7 + 0.3 * noise1d(t * clumps * 2.0, seed);
-
-    // Outer clumps are shorter, so the fan's silhouette is curved.
-    const reach = (1.0 - 0.16 * t * t) * (0.95 + 0.05 * rnd(Math.floor(t * clumps), seed));
-    const radial = smooth(pivot + 0.30, pivot + 0.52, r) * smooth(reach + 0.42, reach + 0.30, r);
-    const taper = smooth(1.05, 0.80, Math.abs(t));
-    return gap * jitter * radial * taper;
+    let best = 0;
+    for (const b of bundles) {
+      const d = Math.abs(t - b.t - b.lean) / (pitch * b.w);
+      if (d > 1.25) continue;
+      // Across the bundle: dense in the middle, hairs thinning at its sides.
+      const across = smooth(1.25, 0.15, d);
+      // Along the hairs: they start at the ferrule and end in ragged tips.
+      const tipJitter = 0.06 * noise1d(t * 26 + b.t * 11, seed + 5);
+      const tip = b.reach + tipJitter;
+      const along = smooth(pivot + 0.26, pivot + 0.46, r) * smooth(tip + 0.44, tip + 0.26, r);
+      // Individual hairs inside the bundle.
+      const hairs = 0.55 + 0.45 * noise1d(t * clumps * 7.5, seed + 6);
+      best = Math.max(best, across * along * hairs * b.dens);
+    }
+    // The outermost bundles carry less paint and sit shorter.
+    return best * smooth(1.12, 0.84, Math.abs(t));
   };
 }
 
 /** Round foliage brush: a dense circle with radial bristle clumping. */
-function roundMask({ clumps = 14, soft = 0.26, seed = 3 } = {}) {
+function roundMask({ clumps = 9, soft = 0.26, seed = 3 } = {}) {
+  // A round foliage brush is a bundle of hairs that splay into separate
+  // points, not a disc. The gaps between the points are what let the colour
+  // behind show through a bush.
+  const pts = [];
+  for (let i = 0; i < clumps; i++) {
+    const a = ((i + 0.5) / clumps) * Math.PI * 2 + rnd(i, seed + 1) * 0.5;
+    pts.push({
+      a,
+      rad: 0.30 + 0.62 * rnd(i, seed + 2),
+      w: 0.36 + 0.40 * rnd(i, seed + 3),
+      dens: 0.70 + 0.30 * rnd(i, seed + 4),
+    });
+  }
   return (u, v) => {
     const dx = (u - 0.5) * 2;
     const dy = (v - 0.5) * 2;
     const r = Math.hypot(dx, dy);
-    if (r > 1.02) return 0;
-    const a = Math.atan2(dy, dx) / Math.PI; // -1..1
-    // Two frequencies plus a radial term, or the bristles line up into spokes
-    // and the brush stamps a wagon wheel instead of a clump of leaves.
-    const streak =
-      0.52 + 0.30 * noise1d(a * clumps + r * 2.6, seed) + 0.22 * noise1d(a * clumps * 2.3 - r * 4.0, seed + 9);
-    const reach = 0.74 + 0.26 * noise1d(a * clumps * 0.6, seed + 4);
-    const body = smooth(reach, reach - soft, r);
-    return streak * body;
+    if (r > 1.05) return 0;
+    const a = Math.atan2(dy, dx);
+    let best = 0;
+    for (const p of pts) {
+      let da = a - p.a;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      const across = smooth(p.w * 1.5, p.w * 0.2, Math.abs(da));
+      const along = smooth(p.rad + 0.34, p.rad + 0.02, r);
+      best = Math.max(best, across * along * p.dens);
+    }
+    // A denser core where all the hairs are still gathered.
+    const core = smooth(0.42, 0.06, r) * 0.9;
+    const hairs = 0.6 + 0.4 * noise1d(a * clumps * 3.5, seed + 7);
+    return Math.max(best * hairs, core) * smooth(1.05, 0.92, r);
   };
 }
 
@@ -245,6 +287,13 @@ export function rasterizeMask(fn, res = MASK_RES, softness = 0.055) {
 // envelope how much the footprint's coverage shape is smoothed away from
 //          the bristle streaks. Small for a steel knife edge, large for a
 //          blender that should not stamp any pattern of its own
+// bristleBias  how much the bristle streaks drive COVERAGE rather than just
+//          impasto. High for a fan brush, where the gaps between the clumps
+//          are the whole effect; low for a flat brush laying a sky, where a
+//          gap is just bare canvas showing through
+// cut      per dab, the share of bristles that fail to catch the surface.
+//          This is what stops a tool stamping an identical mark every touch
+// angleJitter  per-dab wobble in how the tool is held, in radians
 // smudge   isotropic diffusion strength. This is what a blender actually
 //          does; smearing a footprint along a path only makes stripes
 // jitter   how much the bristle pattern shifts between dabs; without it
@@ -307,6 +356,9 @@ export const TOOLS = [
     bleed: 1.0,
     jitter: 0.055,
     envelope: 0.055,
+    bristleBias: 0.24,
+    cut: 0.1,
+    angleJitter: 0.035,
     smudge: 0.05,
     soften: 0.3,
     dryOut: 0.05,
@@ -332,6 +384,9 @@ export const TOOLS = [
     bleed: 1.0,
     jitter: 0.055,
     envelope: 0.055,
+    bristleBias: 0.24,
+    cut: 0.1,
+    angleJitter: 0.035,
     smudge: 0.05,
     soften: 0.3,
     dryOut: 0.06,
@@ -355,7 +410,10 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 0.7,
     jitter: 0.012,
-    envelope: 0.03,
+    envelope: 0.008,
+    bristleBias: 0.95,
+    cut: 0.4,
+    angleJitter: 0.22,
     soften: 0.22,
     dryOut: 0.14,
     aspect: 0.62,
@@ -380,7 +438,10 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 0.7,
     jitter: 0.05,
-    envelope: 0.04,
+    envelope: 0.014,
+    bristleBias: 0.85,
+    cut: 0.34,
+    angleJitter: 0.6,
     soften: 0.22,
     dryOut: 0.16,
     aspect: 1.0,
@@ -403,7 +464,10 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 0.9,
     jitter: 0.04,
-    envelope: 0.045,
+    envelope: 0.03,
+    bristleBias: 0.45,
+    cut: 0.18,
+    angleJitter: 0.14,
     smudge: 0.04,
     soften: 0.26,
     dryOut: 0.09,
@@ -428,6 +492,9 @@ export const TOOLS = [
     bleed: 1.0,
     jitter: 0.05,
     envelope: 0.055,
+    bristleBias: 0.26,
+    cut: 0.1,
+    angleJitter: 0.04,
     smudge: 0.05,
     soften: 0.3,
     dryOut: 0.07,
@@ -452,6 +519,9 @@ export const TOOLS = [
     bleed: 0.8,
     jitter: 0.006,
     envelope: 0.012,
+    bristleBias: 0.35,
+    cut: 0.08,
+    angleJitter: 0.02,
     soften: 0.12,
     dryOut: 0.1,
     aspect: 5.0,
@@ -476,7 +546,10 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 0.8,
     jitter: 0.03,
-    envelope: 0.02,
+    envelope: 0.014,
+    bristleBias: 0.7,
+    cut: 0.26,
+    angleJitter: 0.5,
     soften: 0.16,
     dryOut: 0.11,
     aspect: 1.0,
@@ -502,6 +575,9 @@ export const TOOLS = [
     bleed: 0.15,
     jitter: 0.004,
     envelope: 0.01,
+    bristleBias: 0.5,
+    cut: 0.2,
+    angleJitter: 0.015,
     soften: 0.14,
     dryOut: 0.09,
     aspect: 0.16,
@@ -531,6 +607,9 @@ export const TOOLS = [
     bleed: 0.15,
     jitter: 0.004,
     envelope: 0.01,
+    bristleBias: 0.5,
+    cut: 0.2,
+    angleJitter: 0.015,
     soften: 0.14,
     dryOut: 0.09,
     aspect: 0.22,
@@ -560,6 +639,9 @@ export const TOOLS = [
     bleed: 0.15,
     jitter: 0.004,
     envelope: 0.01,
+    bristleBias: 0.4,
+    cut: 0.15,
+    angleJitter: 0.015,
     soften: 0.0,
     dryOut: 0.1,
     aspect: 0.2,
@@ -586,6 +668,9 @@ export const TOOLS = [
     bleed: 1.2,
     jitter: 0.09,
     envelope: 0.09,
+    bristleBias: 0.1,
+    cut: 0.05,
+    angleJitter: 0.05,
     smudge: 0.95,
     soften: 0.55,
     dryOut: 0.2,
@@ -613,6 +698,9 @@ export const TOOLS = [
     bleed: 1.0,
     jitter: 0.06,
     envelope: 0.07,
+    bristleBias: 0.2,
+    cut: 0.1,
+    angleJitter: 0.3,
     smudge: 0.3,
     soften: 0.0,
     dryOut: 0.1,

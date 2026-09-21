@@ -68,7 +68,15 @@ and misting the base of mountains) and a rag that wipes back to bare canvas.
 
 Each tool is defined by its **footprint** — a picture of the bristles pressed
 flat against the canvas. The gaps matter more than the bristles: the spaces
-between a fan brush's clumps are what make it read as evergreen boughs.
+between a fan brush's clumps are what make it read as evergreen boughs, so a
+fan is modelled as separate hair bundles with clear air between them rather
+than one solid shell. How much those gaps show is per-tool: everything for a
+fan brush, almost nothing for a flat brush laying a sky, where a gap would just
+be bare canvas.
+
+Which bristles catch the surface changes every time you set the tool down, and
+holds for as long as you keep it there. Re-rolling that per dab averaged the
+variation away and made a fan brush stamp the identical mark every touch.
 
 Sizes are in **inches**, not pixels, and scale with the canvas. A 2" brush is
 two inches wide on a 24" canvas at any resolution.
@@ -100,6 +108,12 @@ that flows off a liner brush.
    this and sets up the tool and colours for each step.
 5. **Let it dry** when you want the next layer to sit on top instead of
    blending in.
+
+**Your painting is kept.** Close the tab and come back whenever you like — the
+canvas, the palette and the tool you were holding are all still there. It is
+stored in your own browser (IndexedDB; a painting is about 12MB, well past what
+localStorage takes), nothing is uploaded anywhere, and clearing site data
+clears it. *New canvas* replaces what is saved.
 
 Pressure comes from a stylus if you have one; with a mouse or finger the
 **Pressure** slider does the same job, and it is the control that turns a
@@ -162,6 +176,7 @@ src/
     colors.js         the thirteen pigments and the mediums
     brushes.js        the tools, and the maths that draws each footprint
     lessons.js        three guided paintings
+    storage.js        keeping the painting between visits, in IndexedDB
   ui/app.js           panels, pointer and keyboard wiring
   vendor/             spectral.glsl.js — Kubelka–Munk mixing (MIT)
 ```

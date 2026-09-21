@@ -246,10 +246,11 @@ export class Engine {
       uDabSize: [w, h],
       uDabDir: dir,
       uPressure: d.pressure,
-      uBristleOfs: [
-        (Math.random() - 0.5) * (tool.jitter ?? 0),
-        (Math.random() - 0.5) * (tool.jitter ?? 0) * 0.5,
-      ],
+      // Supplied by the stroke, which keeps one bristle configuration for as
+      // long as the tool is travelling less than a footprint.
+      uBristleOfs: d.bristleOfs || [0, 0],
+      uBristleCut: d.bristleCut || 0,
+      uBristleBias: tool.bristleBias ?? 0.25,
       uWeaveScale: surface.weaveScale ?? this.view.weaveScale,
       uWeaveDepth: surface.weaveDepth ?? this.view.weaveDepth,
       uDeplete: d.deplete,
@@ -522,6 +523,49 @@ export class Engine {
     if (!surface.future.length) return false;
     surface.history.push(this._snapshot(surface));
     const snap = surface.future.pop();
+    this._restore(surface, snap);
+    snap.dispose();
+    return true;
+  }
+
+  // --- saving and restoring -----------------------------------------------
+
+  /**
+   * Reads a surface back as two 8-bit images, the same packing the undo
+   * history uses. Volume and height run past 1.0, so they are scaled down on
+   * the way out and back up on the way in.
+   */
+  captureState(surface) {
+    const gl = this.gl;
+    const snap = this._snapshot(surface);
+    const n = surface.width * surface.height * 4;
+    const paint = new Uint8Array(n);
+    const surf = new Uint8Array(n);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, snap.fbo);
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    gl.readPixels(0, 0, surface.width, surface.height, gl.RGBA, gl.UNSIGNED_BYTE, paint);
+    gl.readBuffer(gl.COLOR_ATTACHMENT1);
+    gl.readPixels(0, 0, surface.width, surface.height, gl.RGBA, gl.UNSIGNED_BYTE, surf);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    snap.dispose();
+    return { width: surface.width, height: surface.height, paint, surf };
+  }
+
+  /** Puts a captured surface back. */
+  restoreState(surface, data) {
+    if (!data || data.width !== surface.width || data.height !== surface.height) return false;
+    const gl = this.gl;
+    const snap = new RenderTarget(gl, surface.width, surface.height, {
+      internalFormat: gl.RGBA8,
+      count: 2,
+      filter: gl.NEAREST,
+    });
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    for (const [i, src] of [[0, data.paint], [1, data.surf]]) {
+      gl.bindTexture(gl.TEXTURE_2D, snap.textures[i]);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, surface.width, surface.height,
+        gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(src));
+    }
     this._restore(surface, snap);
     snap.dispose();
     return true;

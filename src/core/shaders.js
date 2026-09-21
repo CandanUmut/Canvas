@@ -37,6 +37,25 @@ uniform float uPressure;     // 0..1 from the stylus (or 1 for mouse/finger)
 uniform float uWeaveScale;   // canvas thread pitch, in pixels
 uniform float uWeaveDepth;   // how toothy the canvas is
 uniform vec2  uBristleOfs;   // per-dab shift of the bristle pattern
+uniform float uBristleCut;   // per-dab: how many bristles fail to catch
+uniform float uBristleBias;  // how much the streaks drive coverage, 0..1
+
+// Not every bristle picks up and lays down paint on every touch. Some are
+// short of paint, some skip the surface entirely. Cutting a random share of
+// them per dab is what stops a fan brush stamping the identical shell every
+// time -- which is exactly what made foliage read as repeated clip-art
+// instead of as a tree.
+float catchBristle(float b) {
+  return clamp((b - uBristleCut) / max(1.0 - uBristleCut, 0.05), 0.0, 1.0);
+}
+
+// How much paint this point of the footprint lays down. uBristleBias decides
+// whether the bristle structure shows as real gaps (a fan brush tapping
+// foliage, where the gaps ARE the effect) or is smoothed into continuous
+// cover (a flat brush laying a sky, where gaps would just be bare canvas).
+float layAmount(float cover, float bristle) {
+  return cover * mix(1.0, bristle, uBristleBias);
+}
 
 // Bristles are not rigidly fixed: they splay and shift as you work. Sampling
 // the mask at exactly the same offset every dab made each pass re-imprint the
@@ -267,7 +286,7 @@ out vec4 outReservoir;
 void main() {
   vec4 res = texture(uReservoir, vUV);
   vec2 mask = texture(uBristle, bristleUV(vUV)).rg;
-  float bristle = mask.r;
+  float bristle = catchBristle(mask.r);
   float cover = mask.g;
 
   res.a = max(res.a - uDryOut, 0.0);
@@ -284,7 +303,7 @@ void main() {
   vec4 surf = texture(uSurf, cuv);
   float contact = contactAmount(px, bristle, paint.a, surf.r, surf.g);
   if (contact <= 0.001) { outReservoir = res; return; }
-  float lay = cover * mix(1.0, bristle, 0.22);
+  float lay = layAmount(cover, bristle);
 
   // A palette is a paint source, not a surface being painted: the bristles
   // drink from it and lose nothing back.
@@ -404,7 +423,7 @@ void main() {
   }
 
   vec2 mask = texture(uBristle, bristleUV(b)).rg;
-  float bristle = mask.r;     // the streaks
+  float bristle = catchBristle(mask.r);
   float cover = mask.g;       // the footprint's envelope
   if (cover <= 0.003) { outPaint = paint; outSurf = surf; return; }
 
@@ -421,9 +440,7 @@ void main() {
   }
 
   float wet = max(surf.g, uPalette);
-  // Paint goes down over the whole envelope. The bristle streaks only vary it
-  // slightly -- they are ridges in a continuous film, not gaps in it.
-  float lay = cover * mix(1.0, bristle, 0.22);
+  float lay = layAmount(cover, bristle);
   float give = giveVolume(lay, contact, res.a);
   float take = takeVolume(lay, contact, paint.a, wet, res.a);
 

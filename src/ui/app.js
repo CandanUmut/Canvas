@@ -5,6 +5,7 @@ import { StrokeRunner } from '../core/stroke.js';
 import { TOOLS, TOOLS_BY_ID, TOOL_CATEGORIES, MASK_RES } from '../data/brushes.js';
 import { PIGMENTS, MEDIUMS, ALL_PAINTS, PAINTS_BY_ID, hexToRgb, rgbToHex } from '../data/colors.js';
 import { LESSONS } from '../data/lessons.js';
+import * as storage from '../core/storage.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -62,6 +63,60 @@ let stroke;
 let needsRender = true;
 let dpr = 1;
 
+// ------------------------------------------------------------- saving ---
+
+let saveTimer = null;
+let restoring = false;
+
+/** Writes the painting out a moment after you stop, not during a stroke. */
+function scheduleSave(delay = 1800) {
+  if (restoring) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, delay);
+}
+
+async function saveNow() {
+  clearTimeout(saveTimer);
+  if (restoring || !engine || !canvasSurface) return;
+  try {
+    await storage.save({
+      version: storage.SAVE_VERSION,
+      widthInches: canvasSurface.widthInches,
+      canvas: engine.captureState(canvasSurface),
+      palette: engine.captureState(paletteSurface),
+      squeezeSlot: state.squeezeSlot,
+      toolId: state.toolId,
+      paintId: state.paintId,
+      sizes: state.sizes,
+    });
+  } catch {
+    /* saving is best-effort; never let it interrupt painting */
+  }
+}
+
+/** Returns true if a painting was found and put back. */
+async function restoreSaved() {
+  const saved = await storage.load();
+  if (!saved || !saved.canvas) return false;
+  const c = saved.canvas;
+  if (canvasSurface.width !== c.width || canvasSurface.height !== c.height) {
+    canvasSurface.dispose();
+    canvasSurface = engine.createSurface(c.width, c.height);
+    canvasSurface.widthInches = saved.widthInches || 24;
+  }
+  restoring = true;
+  const ok = engine.restoreState(canvasSurface, c);
+  if (saved.palette) engine.restoreState(paletteSurface, saved.palette);
+  if (saved.sizes) Object.assign(state.sizes, saved.sizes);
+  if (saved.squeezeSlot != null) state.squeezeSlot = saved.squeezeSlot;
+  if (saved.toolId && TOOLS_BY_ID[saved.toolId]) state.toolId = saved.toolId;
+  if (saved.paintId && PAINTS_BY_ID[saved.paintId]) state.paintId = saved.paintId;
+  restoring = false;
+  layout();
+  needsRender = true;
+  return ok;
+}
+
 // ------------------------------------------------------------ bootstrap ---
 
 function fatal(err) {
@@ -115,6 +170,26 @@ function boot() {
   resizeGL();
   layout();
   requestAnimationFrame(frame);
+
+  // Bring back whatever was on the easel last time.
+  restoreSaved().then((restored) => {
+    if (!restored) return;
+    $('firstrun').hidden = true;
+    selectTool(state.toolId);
+    for (const b of document.querySelectorAll('.dab')) {
+      b.setAttribute('aria-pressed', b.dataset.paint === state.paintId ? 'true' : 'false');
+    }
+    $('board-hint').classList.add('gone');
+    updateUndoButtons();
+    needsRender = true;
+    toast('Picked up where you left off.');
+  });
+
+  // A tab can be closed or hidden without warning; flush on the way out.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveNow();
+  });
+  window.addEventListener('pagehide', () => saveNow());
 }
 
 function newCanvas(preset) {
@@ -128,6 +203,7 @@ function newCanvas(preset) {
   updateUndoButtons();
   layout();
   needsRender = true;
+  scheduleSave(400);
   toast('Fresh canvas. Start with a Liquid White base coat — it is what makes everything blend.');
 }
 
@@ -838,6 +914,7 @@ function wirePointer(el, getSurface, { palette }) {
     activePointer = null;
     if (ev.pointerType === 'pen') penIsDown = false;
     stroke.end();
+    scheduleSave();
     const r = engine.sampleReservoir();
     // Mixing on the palette is how you choose a colour, so whatever comes off
     // the board becomes the charged colour for the canvas.
@@ -1056,6 +1133,7 @@ function doUndo() {
   if (engine.undo(canvasSurface)) {
     updateUndoButtons();
     needsRender = true;
+    scheduleSave();
   }
 }
 
@@ -1063,6 +1141,7 @@ function doRedo() {
   if (engine.redo(canvasSurface)) {
     updateUndoButtons();
     needsRender = true;
+    scheduleSave();
   }
 }
 
@@ -1258,6 +1337,9 @@ window.studio = {
     return TOOLS_BY_ID[state.toolId];
   },
   sizePx: toolSizePx,
+  save: saveNow,
+  restore: restoreSaved,
+  forget: () => storage.clear(),
   /** Mean wet-paint volume along a horizontal line, v given as 0..1 top-down. */
   coverageAt(v, samples = 16) {
     const y = (1 - v) * canvasSurface.height;

@@ -23,6 +23,30 @@ export class StrokeRunner {
     this.covered = 0;
     this.frameDabs = 0;
     this.dabBudget = DEFAULT_DAB_BUDGET;
+    this.bristles = null;
+    this.sinceRoll = 0;
+  }
+
+  /**
+   * How the bristles happen to be sitting right now: which of them are short
+   * of paint, how the bed has splayed, how the tool is being held. This has to
+   * PERSIST while the tool is in contact and only change as it travels -- a
+   * single touch is one mark, not forty. Re-rolling it per dab averaged all
+   * the variation away and left a fan brush stamping the identical shell every
+   * time, which is what made foliage read as repeated clip-art.
+   */
+  _rollBristles(t, force) {
+    if (!force && this.bristles && this.sinceRoll < 0.8) return this.bristles;
+    this.sinceRoll = 0;
+    this.bristles = {
+      cut: Math.random() * (t.cut ?? 0),
+      ofs: [
+        (Math.random() - 0.5) * (t.jitter ?? 0),
+        (Math.random() - 0.5) * (t.jitter ?? 0) * 0.5,
+      ],
+      wobble: (Math.random() - 0.5) * (t.angleJitter ?? 0),
+    };
+    return this.bristles;
   }
 
   /** Called once per rendered frame; resets this frame's dab allowance. */
@@ -43,6 +67,8 @@ export class StrokeRunner {
     this.residue = 0;
     this.dabCount = 0;
     this.covered = 0;
+    this.sinceRoll = 0;
+    this._rollBristles(settings.tool, true);
     this.last = { ...pt, pressure: this._pressure(input, settings), angle: null };
     this.settings = settings;
     // Lay one ordinary dab now so the mark appears under the pointer at once.
@@ -154,7 +180,9 @@ export class StrokeRunner {
     const paint = settings.paint;
     const size = this._size(settings, pressure);
 
+    const bristles = this._rollBristles(t, false);
     let angle = t.followStroke ? (strokeAngle ?? settings.angle) : settings.angle;
+    angle += bristles.wobble;
     if (settings.tiltAngle !== null && settings.tiltAngle !== undefined && !t.followStroke) {
       angle = settings.tiltAngle;
     }
@@ -173,6 +201,8 @@ export class StrokeRunner {
       pressure,
       deplete,
       moving,
+      bristleCut: bristles.cut,
+      bristleOfs: bristles.ofs,
       flow: t.flow * settings.flowScale * press * (1 + thinner * 0.4),
       pickup: t.pickup * settings.blendScale,
       soften: t.soften * settings.blendScale,
@@ -190,5 +220,6 @@ export class StrokeRunner {
     this.dabCount++;
     this.frameDabs++;
     this.covered += deplete;
+    this.sinceRoll += deplete;
   }
 }
