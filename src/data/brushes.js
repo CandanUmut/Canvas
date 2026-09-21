@@ -166,26 +166,30 @@ function linerMask({ seed = 5 } = {}) {
  */
 function knifeMask({ bevel = 0.02, seed = 6 } = {}) {
   return (u, v) => {
-    // The blade itself is straight steel, but the roll of paint riding on it
-    // is not: it sits unevenly, runs out in patches, and lifts away at the
-    // ends. Those irregularities are the whole difference between a stroke
-    // that reads as rock face and one that reads as a grey playing card.
+    // A painting knife is a sheet of steel, and which way you look at it
+    // matters. ACROSS the blade the edge is the crispest thing in the
+    // toolbox -- that hard line is what cuts a ridge into a mountain, and
+    // softening it turned every peak into a rounded lozenge. ALONG the blade
+    // there is no edge at all, just paint running out, so the ends have to
+    // fade or consecutive dabs stamp their corners down the stroke and a
+    // mountain becomes a stack of bricks.
     //
-    // u runs along the blade, v across its thickness. Travel is along v, so
-    // the v edges stay crisp -- that is the edge doing the cutting -- while
-    // the u ends round off the way a real blade lifts off the canvas.
-    const ends = smooth(0, 0.085, u) * smooth(0, 0.085, 1 - u);
+    // u runs along the blade, v across its thickness.
+    const ends = smooth(0, 0.16, u) * smooth(0, 0.16, 1 - u);
 
-    const rollA = 0.06 * noise1d(u * 3.1, seed + 2);
-    const rollB = 0.06 * noise1d(u * 3.1 + 11, seed + 3);
-    const edge = smooth(rollA, rollA + bevel * 2.2, v) * smooth(rollB, rollB + bevel * 2.2, 1 - v);
+    // The roll of paint sits unevenly, so the blade meets the canvas at a
+    // slightly different place along its length -- but it stays a hard edge.
+    const rollA = 0.06 * noise1d(u * 3.4, seed + 2);
+    const rollB = 0.06 * noise1d(u * 3.4 + 11, seed + 3);
+    const edge = smooth(rollA, rollA + bevel * 0.6, v) * smooth(rollB, rollB + bevel * 0.6, 1 - v);
 
-    // Paint sits along the edge in patches -- some stretches loaded, some
-    // scraped bare -- so a long pull breaks up instead of staying solid.
-    const patch = noise1d(u * 4.5 + 20, seed + 6);
-    const load = 0.48 + 0.52 * smooth(0.18, 0.60, patch);
-    const grain = 0.72 + 0.28 * noise1d(u * 30, seed);
-    const loadBias = 0.66 + 0.34 * smooth(0.6, 0.0, v);
+    // Loaded in patches: some stretches carry paint, some are scraped bare,
+    // and the bare ones are what let the ground show through a knife stroke.
+    const patch = noise1d(u * 4.2 + 20, seed + 6) * 0.65 + noise1d(u * 11 + 5, seed + 9) * 0.35;
+    const load = smooth(0.16, 0.66, patch);
+    const grain = 0.70 + 0.30 * noise1d(u * 30, seed);
+    // Most of the paint comes off the trailing edge.
+    const loadBias = 0.58 + 0.42 * smooth(0.66, 0.0, v);
     return ends * edge * load * grain * loadBias;
   };
 }

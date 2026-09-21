@@ -336,6 +336,14 @@ body {
 .brush-cursor.round {
   border-radius: 50%;
 }
+/* On the palette a finger covers the paint it is mixing, so the mark has to
+   read from under it: bright, and visible against both the board and dark
+   pigment. */
+#palette-cursor {
+  border-color: rgba(255, 255, 255, 0.95);
+  outline-color: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
 
 .toast {
   position: absolute;

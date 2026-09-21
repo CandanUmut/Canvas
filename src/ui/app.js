@@ -766,20 +766,39 @@ function buildSurfaceSliders() {
  * the difference between a cursor and something you feel you are holding.
  */
 function updateBrushCursor(clientX, clientY) {
-  const el = $('brush-cursor');
-  const tool = TOOLS_BY_ID[state.toolId];
   if (clientX !== undefined) {
     cursorAt.x = clientX;
     cursorAt.y = clientY;
   }
-  const stageRect = $('stage').getBoundingClientRect();
-  const over = cursorAt.x >= stageRect.left && cursorAt.x <= stageRect.right &&
-    cursorAt.y >= stageRect.top && cursorAt.y <= stageRect.bottom;
+  drawCursor($('brush-cursor'), $('stage'), state.zoom);
+}
+
+/**
+ * The palette needs the same mark as the canvas. Mixing is done by feel, and
+ * on a touchscreen your finger hides the very paint you are working into, so
+ * without this you are guessing where the tool actually is.
+ */
+function updatePaletteCursor(clientX, clientY) {
+  if (clientX !== undefined) {
+    paletteAt.x = clientX;
+    paletteAt.y = clientY;
+  }
+  const slot = $('palette-slot');
+  // The palette is drawn to fit its slot, so the tool's true size scales too.
+  const scale = slot.clientWidth / PALETTE_W;
+  drawCursor($('palette-cursor'), slot, scale, paletteAt);
+}
+
+function drawCursor(el, host, zoom, at = cursorAt) {
+  const tool = TOOLS_BY_ID[state.toolId];
+  const rect = host.getBoundingClientRect();
+  const over = at.x >= rect.left && at.x <= rect.right &&
+    at.y >= rect.top && at.y <= rect.bottom;
   if (!over) {
     el.hidden = true;
     return;
   }
-  const w = toolSizePx() * state.zoom;
+  const w = toolSizePx() * zoom;
   const h = w * tool.aspect;
   const angle = tool.followStroke ? strokeAngleDeg : state.angle;
   el.hidden = false;
@@ -787,12 +806,13 @@ function updateBrushCursor(clientX, clientY) {
   el.style.width = `${Math.max(3, w)}px`;
   el.style.height = `${Math.max(3, h)}px`;
   el.style.transform =
-    `translate(${cursorAt.x - stageRect.left - w / 2}px, ${cursorAt.y - stageRect.top - h / 2}px) rotate(${-angle}deg)`;
+    `translate(${at.x - rect.left - w / 2}px, ${at.y - rect.top - h / 2}px) rotate(${-angle}deg)`;
 }
 
 // --------------------------------------------------------------- pointer ---
 
 const cursorAt = { x: -1e4, y: -1e4 };
+const paletteAt = { x: -1e4, y: -1e4 };
 let strokeAngleDeg = 0;
 let activePointer = null;
 let penIsDown = false;
@@ -866,6 +886,7 @@ function wirePointer(el, getSurface, { palette }) {
     }
 
     activePointer = ev.pointerId;
+    if (palette) updatePaletteCursor(ev.clientX, ev.clientY);
     el.setPointerCapture(ev.pointerId);
     // Real brushes get recharged before every stroke. Not doing this was the
     // main reason the tool felt permanently empty. It tops the load back up
@@ -881,7 +902,8 @@ function wirePointer(el, getSurface, { palette }) {
   });
 
   el.addEventListener('pointermove', (ev) => {
-    updateBrushCursor(ev.clientX, ev.clientY);
+    if (palette) updatePaletteCursor(ev.clientX, ev.clientY);
+    else updateBrushCursor(ev.clientX, ev.clientY);
     if (panning && panning.id === ev.pointerId) {
       state.panX += ev.clientX - panning.x;
       state.panY += ev.clientY - panning.y;
@@ -927,7 +949,8 @@ function wirePointer(el, getSurface, { palette }) {
   el.addEventListener('lostpointercapture', finish);
   el.addEventListener('contextmenu', (e) => e.preventDefault());
   el.addEventListener('pointerleave', () => {
-    if (activePointer === null) $('brush-cursor').hidden = true;
+    if (activePointer !== null) return;
+    $(palette ? 'palette-cursor' : 'brush-cursor').hidden = true;
   });
 }
 

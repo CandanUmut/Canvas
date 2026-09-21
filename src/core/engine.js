@@ -49,9 +49,20 @@ export class Surface {
     this.scratch = new RenderTarget(gl, width, height, opts);
     this.history = [];
     this.future = [];
-    // Each snapshot is two full-size 8-bit textures; cap the history by
-    // memory rather than count so a big canvas does not eat all of VRAM.
-    this.historyCap = Math.max(4, Math.min(14, Math.round(90e6 / (width * height * 8))));
+    // The pixel box touched since the last history step, so an old step can be
+    // boiled down to just the patch it is responsible for.
+    this.touched = null;
+    // Only the most recent steps stay on the GPU as whole-canvas snapshots.
+    // Everything older is kept as the patch it changed, which is usually a
+    // sliver of the canvas -- that is what makes the history effectively
+    // unlimited instead of the four-to-fourteen steps a full-frame history
+    // could afford.
+    this.gpuSteps = Math.max(3, Math.min(8, Math.round(50e6 / (width * height * 8))));
+    // Patches are small, but a base coat changes every pixel, so the total is
+    // still worth watching. This much holds many hundreds of ordinary strokes
+    // -- far past any real session -- and only ever drops the very oldest.
+    this.historyBytes = 0;
+    this.historyBudget = 480e6;
   }
 
   get paintTex() {
@@ -65,7 +76,9 @@ export class Surface {
   dispose() {
     this.main.dispose();
     this.scratch.dispose();
-    for (const s of [...this.history, ...this.future]) s.dispose();
+    for (const e of [...this.history, ...this.future]) {
+      if (e.gpu) e.gpu.dispose();
+    }
     this.history = [];
     this.future = [];
   }
@@ -379,6 +392,14 @@ export class Engine {
     const x1 = Math.round((rect[0] + rect[2]) * surface.width);
     const y1 = Math.round((rect[1] + rect[3]) * surface.height);
 
+    // Every write to the surface comes through here, so this is the one place
+    // that can say what a step actually changed.
+    const t = surface.touched;
+    surface.touched = t
+      ? { x0: Math.min(t.x0, x0), y0: Math.min(t.y0, y0),
+          x1: Math.max(t.x1, x1), y1: Math.max(t.y1, y1) }
+      : { x0, y0, x1, y1 };
+
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, surface.scratch.fbo);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, surface.main.fbo);
     for (let i = 0; i < 2; i++) {
@@ -477,6 +498,7 @@ export class Engine {
       uPaint: surface.paintTex,
       uSurf: surface.surfTex,
       uScale: 1 / PACK_SCALE,
+      uSrcRect: FULL_RECT,
     });
     drawQuad(gl);
     return snap;
@@ -490,15 +512,111 @@ export class Engine {
       uPaint: snap.textures[0],
       uSurf: snap.textures[1],
       uScale: PACK_SCALE,
+      uSrcRect: FULL_RECT,
     });
     drawQuad(gl);
     this._blitBack(surface, FULL_RECT);
   }
 
+  /**
+   * Turns a whole-canvas GPU snapshot into just the patch it is responsible
+   * for. A step's patch is whatever changed *after* it was taken, because
+   * putting that patch back is the only thing undoing to it has to do.
+   */
+  _demote(surface, entry) {
+    if (!entry.gpu || !entry.rect) return;
+    const gl = this.gl;
+    const { x0, y0, x1, y1 } = entry.rect;
+    const w = x1 - x0;
+    const h = y1 - y0;
+    if (w <= 0 || h <= 0) {
+      // Nothing changed after this step, so it holds nothing worth keeping.
+      entry.gpu.dispose();
+      entry.gpu = null;
+      entry.empty = true;
+      return;
+    }
+    const paint = new Uint8Array(w * h * 4);
+    const surf = new Uint8Array(w * h * 4);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, entry.gpu.fbo);
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    gl.readPixels(x0, y0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, paint);
+    gl.readBuffer(gl.COLOR_ATTACHMENT1);
+    gl.readPixels(x0, y0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, surf);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    entry.gpu.dispose();
+    entry.gpu = null;
+    entry.patch = { w, h, paint, surf };
+    surface.historyBytes += paint.length * 2;
+  }
+
+  /** Frees a step whichever form it is in. */
+  _dropStep(surface, entry) {
+    if (entry.gpu) entry.gpu.dispose();
+    if (entry.patch) surface.historyBytes -= entry.patch.paint.length * 2;
+    entry.gpu = null;
+    entry.patch = null;
+  }
+
+  /** Drops the oldest steps if the patches have piled up too far. */
+  _trim(surface) {
+    while (surface.historyBytes > surface.historyBudget && surface.history.length > surface.gpuSteps) {
+      this._dropStep(surface, surface.history.shift());
+    }
+  }
+
+  /** Pushes the newest steps off the GPU, oldest first. */
+  _spill(surface, list) {
+    for (let i = list.length - 1 - surface.gpuSteps; i >= 0; i--) {
+      if (!list[i].gpu) break;
+      this._demote(surface, list[i]);
+    }
+  }
+
+  /** Puts a step back, whether it is a full snapshot or a single patch. */
+  _apply(surface, entry) {
+    if (entry.empty) return;
+    if (entry.gpu) {
+      this._restore(surface, entry.gpu);
+      return;
+    }
+    const gl = this.gl;
+    const { w, h, paint, surf } = entry.patch;
+    const { x0, y0 } = entry.rect;
+    const tex = new RenderTarget(gl, w, h, {
+      internalFormat: gl.RGBA8,
+      count: 2,
+      filter: gl.NEAREST,
+    });
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    for (const [i, src] of [[0, paint], [1, surf]]) {
+      gl.bindTexture(gl.TEXTURE_2D, tex.textures[i]);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    }
+    const rect = [x0 / surface.width, y0 / surface.height,
+                  w / surface.width, h / surface.height];
+    surface.scratch.bind();
+    this.programs.copy.use().set({
+      uRect: rect,
+      uPaint: tex.textures[0],
+      uSurf: tex.textures[1],
+      uScale: PACK_SCALE,
+      uSrcRect: rect,
+    });
+    drawQuad(gl);
+    this._blitBack(surface, rect);
+    tex.dispose();
+  }
+
   pushHistory(surface) {
-    surface.history.push(this._snapshot(surface));
-    if (surface.history.length > surface.historyCap) surface.history.shift().dispose();
-    for (const f of surface.future) f.dispose();
+    // The step below now knows what changed while it was the current state.
+    const prev = surface.history[surface.history.length - 1];
+    if (prev && !prev.rect) prev.rect = surface.touched || { x0: 0, y0: 0, x1: 0, y1: 0 };
+    surface.history.push({ gpu: this._snapshot(surface), rect: null });
+    surface.touched = null;
+    this._spill(surface, surface.history);
+    this._trim(surface);
+    for (const f of surface.future) this._dropStep(surface, f);
     surface.future = [];
   }
 
@@ -512,19 +630,26 @@ export class Engine {
 
   undo(surface) {
     if (!surface.history.length) return false;
-    surface.future.push(this._snapshot(surface));
-    const snap = surface.history.pop();
-    this._restore(surface, snap);
-    snap.dispose();
+    const step = surface.history.pop();
+    // The step being left behind changed exactly the same patch, so redo can
+    // be stored the same cheap way.
+    if (!step.rect) step.rect = surface.touched || { x0: 0, y0: 0, x1: 0, y1: 0 };
+    surface.future.push({ gpu: this._snapshot(surface), rect: step.rect });
+    this._spill(surface, surface.future);
+    this._apply(surface, step);
+    this._dropStep(surface, step);
+    surface.touched = null;
     return true;
   }
 
   redo(surface) {
     if (!surface.future.length) return false;
-    surface.history.push(this._snapshot(surface));
-    const snap = surface.future.pop();
-    this._restore(surface, snap);
-    snap.dispose();
+    const step = surface.future.pop();
+    surface.history.push({ gpu: this._snapshot(surface), rect: step.rect });
+    this._spill(surface, surface.history);
+    this._apply(surface, step);
+    this._dropStep(surface, step);
+    surface.touched = null;
     return true;
   }
 

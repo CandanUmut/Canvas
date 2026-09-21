@@ -25,6 +25,7 @@ export class StrokeRunner {
     this.dabBudget = DEFAULT_DAB_BUDGET;
     this.bristles = null;
     this.sinceRoll = 0;
+    this.heldAngle = null;
   }
 
   /**
@@ -68,6 +69,7 @@ export class StrokeRunner {
     this.dabCount = 0;
     this.covered = 0;
     this.sinceRoll = 0;
+    this.heldAngle = null;
     this._rollBristles(settings.tool, true);
     this.last = { ...pt, pressure: this._pressure(input, settings), angle: null };
     this.settings = settings;
@@ -94,7 +96,23 @@ export class StrokeRunner {
 
     const ux = dx / dist;
     const uy = dy / dist;
-    const strokeAngle = Math.atan2(-ux, uy);
+    let strokeAngle = Math.atan2(-ux, uy);
+    // Ease the tool round a corner instead of snapping it: rotating instantly
+    // at every change of direction stamps a staircase of rectangles down a
+    // mountain rather than pulling a continuous face. But easing at a fixed
+    // rate is just as wrong at a hairpin -- a long blade then pivots through
+    // every angle on the way round and sweeps out a fan. So the sharper the
+    // turn, the more of it is taken at once: gentle arcs stay smooth, and a
+    // corner is treated as what it is, a change of direction rather than a
+    // pirouette.
+    if (this.heldAngle !== null && this.heldAngle !== undefined) {
+      let d = strokeAngle - this.heldAngle;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      const sharp = Math.min(1, Math.abs(d) / 0.7);
+      strokeAngle = this.heldAngle + d * (0.3 + 0.65 * sharp * sharp);
+    }
+    this.heldAngle = strokeAngle;
 
     // How far the footprint reaches along the direction of travel. A dab only
     // meets that much fresh canvas, which is what governs how fast the tool

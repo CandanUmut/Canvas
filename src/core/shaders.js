@@ -86,35 +86,77 @@ float hash12(vec2 p) {
   return fract((p3.x + p3.y) * p3.z);
 }
 
+// Smooth value noise. hash12 alone is blocky, and blocky irregularity reads
+// as digital; a brush skipping across it needs the surface to rise and fall.
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash12(i), hash12(i + vec2(1, 0)), f.x),
+             mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), f.x), f.y);
+}
+
 // A cotton-duck weave: two thread directions, alternating which lies on top.
 // The peaks of this are what a dry brush skips across, and that skipping is
 // how Bob got sparkling highlights on a mountain with one stroke.
-float canvasWeave(vec2 px) {
+float weaveThreads(vec2 px) {
   vec2 t = px / max(uWeaveScale, 1.0);
   float over = step(0.5, fract((floor(t.x) + floor(t.y)) * 0.5));
   float warp = cos(fract(t.x) * TAU);
   float weft = cos(fract(t.y) * TAU);
-  float h = mix(weft, warp, over) * 0.5 + 0.5;
-  float slub = hash12(floor(t)) * 0.16 + hash12(floor(t * 0.25)) * 0.10;
-  return clamp(h * 0.72 + slub + 0.06, 0.0, 1.0);
+  return mix(weft, warp, over) * 0.5 + 0.5;
+}
+
+float canvasWeave(vec2 px) {
+  vec2 t = px / max(uWeaveScale, 1.0);
+  float h = weaveThreads(px);
+
+  // Threads alone are a perfect grid, and a perfect grid makes a dry stroke
+  // break into machine stripes -- the same rows skip for the stroke's whole
+  // length. Real cloth is never that even: it is stretched unevenly, the yarn
+  // is slubby, and the ground is brushed on in ridges. These coarser swells
+  // are what scatter a light stroke into irregular patches with bare gaps
+  // between them, which is the whole look of scumbled colour.
+  //
+  // One octave of real noise for the broad swells, and a cosine whose phase
+  // that noise drags around for the middle scale -- this runs for every pixel
+  // of every dab, so it has to stay cheap.
+  float swell = vnoise(t * 0.09);
+  float mid = 0.5 + 0.5 * cos(t.x * 0.83 + t.y * 1.27 + swell * 6.2);
+  float slub = hash12(floor(t)) * 0.10;
+
+  return clamp(h * 0.42 + (swell * 0.68 + mid * 0.32) * 0.52 + slub + 0.04, 0.0, 1.0);
 }
 
 // How much of this bristle actually reaches the surface here. Light pressure
 // only touches the weave peaks; heavy pressure floods the valleys too.
 float contactAmount(vec2 px, float bristle, float volume, float height, float wetness) {
   float weave = canvasWeave(px);
-  // Wet paint fills the canvas tooth, but never all of it -- paint has a
-  // surface of its own. Without this floor a light touch over an already
-  // painted area covered like a full press, and "barely touch it so the
-  // highlight breaks up" stopped working after the first layer.
-  float tooth = weave * uWeaveDepth * max(0.30, 1.0 - volume * 1.2);
-  // Ridges resist the tool only once they have set up. Wet impasto is soft,
-  // and charging it as tooth made a fresh pile of paint HARDER to pick up
-  // than bare canvas -- exactly backwards on the palette.
-  tooth += height * 0.55 * weave * (1.0 - wetness);
+
+  // How much relief the surface has: the canvas tooth, progressively filled in
+  // as paint builds up, plus the ridges the paint itself is standing in.
+  // Wet paint used to erase the relief almost entirely (a 0.22 floor), which
+  // left the tooth smaller than the contact softness -- so on a wet ground
+  // nothing but the bristle pattern decided contact, and since that pattern is
+  // fixed for the length of a stroke, every drag came out as ruler-straight
+  // bars. A loaded ground is not smooth: it is full of the ridges the last
+  // brush left, and those ridges are exactly what the next stroke skips on.
+  // The height term is a feedback loop -- a ridge laid by one stroke makes the
+  // next stroke bite harder over it, which compounds into ruled lines -- so it
+  // stays small. A wet ground does flatten the tooth, but not to nothing.
+  float relief = uWeaveDepth * max(0.40, 1.0 - volume * 0.8) + height * 0.45;
+
+  // GAP is how far BELOW the highest points this spot sits. A tool skimming a
+  // surface meets the peaks first and only reaches the hollows when pressed.
+  // This was inverted: relief was compared directly against pressure, so a
+  // light touch painted the hollows and missed the peaks -- the exact opposite
+  // of a dry brush, and the reason a stroke never broke up no matter how
+  // lightly it was laid. "Just touch the top" depends entirely on this sign.
+  float gap = (1.0 - weave) * relief;
+
   float press = uPressure * bristle;
-  float soft = 0.05 + uPressure * 0.26;
-  return smoothstep(tooth - soft, tooth + soft, press);
+  float soft = 0.035 + uPressure * 0.18;
+  return smoothstep(gap - soft, gap + soft, press);
 }
 `;
 
@@ -301,7 +343,13 @@ void main() {
 
   vec4 paint = texture(uPaint, cuv);
   vec4 surf = texture(uSurf, cuv);
-  float contact = contactAmount(px, bristle, paint.a, surf.r, surf.g);
+  // Contact asks whether the TOOL is touching the canvas here, so it goes by
+  // the footprint's envelope, with only a little of the hair pattern in it.
+  // Feeding it the raw streaks made every fixed bristle gap cut a hard line
+  // that the next overlapping dab reinforced instead of softening, and a sky
+  // came out ruled like notepaper. How much paint leaves each hair is a
+  // separate question, and layAmount below is where it belongs.
+  float contact = contactAmount(px, mix(cover, bristle, 0.35), paint.a, surf.r, surf.g);
   if (contact <= 0.001) { outReservoir = res; return; }
   float lay = layAmount(cover, bristle);
 
@@ -427,7 +475,13 @@ void main() {
   float cover = mask.g;       // the footprint's envelope
   if (cover <= 0.003) { outPaint = paint; outSurf = surf; return; }
 
-  float contact = contactAmount(px, bristle, paint.a, surf.r, surf.g);
+  // Contact asks whether the TOOL is touching the canvas here, so it goes by
+  // the footprint's envelope, with only a little of the hair pattern in it.
+  // Feeding it the raw streaks made every fixed bristle gap cut a hard line
+  // that the next overlapping dab reinforced instead of softening, and a sky
+  // came out ruled like notepaper. How much paint leaves each hair is a
+  // separate question, and layAmount below is where it belongs.
+  float contact = contactAmount(px, mix(cover, bristle, 0.35), paint.a, surf.r, surf.g);
   if (contact <= 0.001) { outPaint = paint; outSurf = surf; return; }
 
   vec4 res = texture(uReservoir, b);
@@ -579,11 +633,16 @@ export const COPY_FRAG =
 uniform sampler2D uPaint;
 uniform sampler2D uSurf;
 uniform float uScale;
+// Which part of the source stands for the rectangle being drawn. Full-frame
+// copies pass 0,0,1,1; an undo step that only stored the patch it changed
+// passes that patch, so a small texture lands in the right place.
+uniform vec4 uSrcRect;
 layout(location = 0) out vec4 outPaint;
 layout(location = 1) out vec4 outSurf;
 void main() {
-  vec4 p = texture(uPaint, vUV);
-  vec4 s = texture(uSurf, vUV);
+  vec2 uv = (vUV - uSrcRect.xy) / max(uSrcRect.zw, vec2(1e-6));
+  vec4 p = texture(uPaint, uv);
+  vec4 s = texture(uSurf, uv);
   outPaint = vec4(p.rgb, p.a * uScale);
   outSurf = vec4(s.r * uScale, s.g, s.b * uScale, s.a);
 }
@@ -629,7 +688,11 @@ float heightAt(vec2 uv) {
   vec4 p = texture(uPaint, uv);
   vec4 s = texture(uSurf, uv);
   float cover = clamp(p.a * 1.9, 0.0, 1.0);
-  float weave = canvasWeave(uv * uCanvasSize) * uWeaveDepth;
+  // Twelve of these are taken per pixel to build the lighting normal, so it
+  // uses only the thread pattern. The broad swells are far too gentle to show
+  // in a normal anyway, and paying for them twelve times over was costing
+  // more frame time than the painting itself.
+  float weave = weaveThreads(uv * uCanvasSize) * uWeaveDepth;
   return s.r * uRelief + weave * (1.0 - cover * 0.80) * 0.16;
 }
 
