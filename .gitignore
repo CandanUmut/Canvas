@@ -1,3 +1,8 @@
 .DS_Store
 Thumbs.db
 node_modules/
+
+# Reference images dropped in for comparison. Kept local -- these are
+# photographs of other people's paintings, not ours to publish.
+docs/Screenshot*.png
+docs/reference*

@@ -178,6 +178,7 @@ export class StrokeRunner {
       soften: t.soften * settings.blendScale,
       dryOut: t.dryOut,
       scrape: t.scrape * settings.flowScale,
+      smudge: (t.smudge ?? 0) * settings.blendScale,
       // Thinner makes paint flow; it should not erase the pigment. A thinned
       // liner stroke of Van Dyke Brown is still a dark line.
       opacity: (paint.opacity ?? 1) * (1 - thinner * 0.45),

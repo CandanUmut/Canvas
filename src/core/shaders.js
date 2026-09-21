@@ -178,8 +178,12 @@ float hidingPower(float give, float under) {
   // about one layer, while a squeezed pile is five deep, so comparing against
   // the raw depth also stopped paint covering the canvas and left every
   // stroke looking like coloured glass.
-  float resist = under * 0.22;
-  return (1.0 - exp(-give * o * 3.0)) * (give / (give + resist + 1e-4));
+  // Only a genuinely DEEP bed of paint -- a squeezed pile on the palette, which
+  // is several layers thick -- can resist being covered. A canvas carries about
+  // one layer, and charging that as resistance stopped opaque paint covering
+  // anything, which is why white never read as white and nothing was ever dark.
+  float resist = max(0.0, under - 1.6) * 0.45;
+  return (1.0 - exp(-give * o * 4.5)) * (give / (give + resist + 1e-4));
 }
 `;
 
@@ -262,10 +266,12 @@ out vec4 outReservoir;
 
 void main() {
   vec4 res = texture(uReservoir, vUV);
-  float bristle = texture(uBristle, bristleUV(vUV)).r;
+  vec2 mask = texture(uBristle, bristleUV(vUV)).rg;
+  float bristle = mask.r;
+  float cover = mask.g;
 
   res.a = max(res.a - uDryOut, 0.0);
-  if (bristle <= 0.001) { outReservoir = res; return; }
+  if (cover <= 0.003) { outReservoir = res; return; }
 
   vec2 px = brushToCanvas(vUV);
   vec2 cuv = px / uCanvasSize;
@@ -278,12 +284,13 @@ void main() {
   vec4 surf = texture(uSurf, cuv);
   float contact = contactAmount(px, bristle, paint.a, surf.r, surf.g);
   if (contact <= 0.001) { outReservoir = res; return; }
+  float lay = cover * mix(1.0, bristle, 0.22);
 
   // A palette is a paint source, not a surface being painted: the bristles
   // drink from it and lose nothing back.
   float wet = max(surf.g, uPalette);
-  float tk = takeLoad(contact, paint.a, wet, res.a);
-  float gv = uPalette > 0.5 ? 0.0 : giveLoad(contact, res.a);
+  float tk = takeLoad(contact, paint.a, wet, res.a) * lay;
+  float gv = uPalette > 0.5 ? 0.0 : giveLoad(contact, res.a) * lay;
 
   float remain = max(res.a - gv, 0.0);
   float total = clamp(remain + tk, 0.0, 1.0);
@@ -380,6 +387,8 @@ uniform float uMaxVolume;
 uniform float uLevel;
 uniform float uScrape;
 uniform float uClearMix;
+uniform float uSmudge;   // isotropic diffusion: a real blender, not a smear
+uniform float uSmudgeR;  // radius of the diffusion kernel, in canvas pixels
 
 layout(location = 0) out vec4 outPaint;
 layout(location = 1) out vec4 outSurf;
@@ -394,8 +403,10 @@ void main() {
     outPaint = paint; outSurf = surf; return;
   }
 
-  float bristle = texture(uBristle, bristleUV(b)).r;
-  if (bristle <= 0.001) { outPaint = paint; outSurf = surf; return; }
+  vec2 mask = texture(uBristle, bristleUV(b)).rg;
+  float bristle = mask.r;     // the streaks
+  float cover = mask.g;       // the footprint's envelope
+  if (cover <= 0.003) { outPaint = paint; outSurf = surf; return; }
 
   float contact = contactAmount(px, bristle, paint.a, surf.r, surf.g);
   if (contact <= 0.001) { outPaint = paint; outSurf = surf; return; }
@@ -403,15 +414,18 @@ void main() {
   vec4 res = texture(uReservoir, b);
 
   if (uScrape > 0.0) {
-    float lift = uScrape * bristle * contact;
+    float lift = uScrape * cover * contact;
     outPaint = vec4(paint.rgb, max(paint.a - lift, 0.0));
     outSurf = vec4(max(surf.r - lift * 1.5, 0.0), surf.g, surf.b, surf.a);
     return;
   }
 
   float wet = max(surf.g, uPalette);
-  float give = giveVolume(bristle, contact, res.a);
-  float take = takeVolume(bristle, contact, paint.a, wet, res.a);
+  // Paint goes down over the whole envelope. The bristle streaks only vary it
+  // slightly -- they are ridges in a continuous film, not gaps in it.
+  float lay = cover * mix(1.0, bristle, 0.22);
+  float give = giveVolume(lay, contact, res.a);
+  float take = takeVolume(lay, contact, paint.a, wet, res.a);
 
   // A mixture you made on the palette has to stay there to reload from.
   if (uPalette > 0.5) take = 0.0;
@@ -430,12 +444,44 @@ void main() {
   float volume = clamp(remain + give, 0.0, uMaxVolume);
   if (uPalette > 0.5) volume = max(volume, paint.a);
 
-  float height = surf.r - take * 0.9 + give * uBody * 0.85;
+  float height = surf.r - take * 0.9 + give * uBody * 0.85 * (0.78 + 0.38 * bristle);
   height = mix(height, height * 0.35, uLevel * contact);
-  height = clamp(height, 0.0, 2.5);
+  // Wet paint sags. Without this, every overlapping pass leaves a ridge at its
+  // edge and a blocked-in sky turns into corduroy of stroke-spaced lines.
+  float settle = clamp(surf.g * 0.35 * contact, 0.0, 0.5);
+  height = mix(height, height * 0.72, settle);
+  height = clamp(height, 0.0, 1.6);
 
   float wetness = max(surf.g, uWetness * step(0.00001, give));
   float body = mix(surf.b, uBody, clamp(give * 2.0, 0.0, 1.0));
+
+  // A blender does not push paint along a line -- dragging a footprint in
+  // parallel passes is exactly what leaves corduroy. It softens what is
+  // already there, equally in every direction, and it has to soften the
+  // impasto with it or you get a blurred colour field with a crisp lit ridge
+  // still sitting on top of it, which is a dead giveaway.
+  if (uSmudge > 0.0001) {
+    vec2 r = uSmudgeR / uCanvasSize;
+    vec4 pa = texture(uPaint, vUV + vec2( r.x, 0.0));
+    vec4 pb = texture(uPaint, vUV + vec2(-r.x, 0.0));
+    vec4 pc = texture(uPaint, vUV + vec2(0.0,  r.y));
+    vec4 pd = texture(uPaint, vUV + vec2(0.0, -r.y));
+    vec4 sa = texture(uSurf,  vUV + vec2( r.x, 0.0));
+    vec4 sb = texture(uSurf,  vUV + vec2(-r.x, 0.0));
+    vec4 sc = texture(uSurf,  vUV + vec2(0.0,  r.y));
+    vec4 sd = texture(uSurf,  vUV + vec2(0.0, -r.y));
+
+    float wa = pa.a, wb = pb.a, wc = pc.a, wd = pd.a;
+    float wsum = wa + wb + wc + wd;
+    float k = clamp(uSmudge * cover * contact * uDeplete * 14.0, 0.0, 0.85);
+    if (wsum > 1e-4 && k > 0.0005) {
+      // Volume-weighted, so thin paint does not drag a thick neighbour around.
+      vec3 avg = (pa.rgb * wa + pb.rgb * wb + pc.rgb * wc + pd.rgb * wd) / wsum;
+      colour = mixEven(colour, avg, k);
+      volume = mix(volume, wsum * 0.25, k * 0.7);
+      height = mix(height, (sa.r + sb.r + sc.r + sd.r) * 0.25, k);
+    }
+  }
 
   outPaint = vec4(colour, volume);
   outSurf = vec4(height, wetness, body, surf.a);
@@ -567,7 +613,7 @@ float heightAt(vec2 uv) {
   vec4 s = texture(uSurf, uv);
   float cover = clamp(p.a * 1.9, 0.0, 1.0);
   float weave = canvasWeave(uv * uCanvasSize) * uWeaveDepth;
-  return s.r * uRelief + weave * (1.0 - cover * 0.75) * 0.16;
+  return s.r * uRelief + weave * (1.0 - cover * 0.80) * 0.16;
 }
 
 void main() {
@@ -582,19 +628,23 @@ void main() {
   vec3 albedo = mix(base, paint.rgb, cover);
 
   // Normal from the height field, so thick paint catches the light.
-  float hL = heightAt(vUV - vec2(uTexel.x, 0.0));
-  float hR = heightAt(vUV + vec2(uTexel.x, 0.0));
-  float hD = heightAt(vUV - vec2(0.0, uTexel.y));
-  float hU = heightAt(vUV + vec2(0.0, uTexel.y));
-  vec3 n = normalize(vec3((hL - hR) * 12.0, (hD - hU) * 12.0, 1.0));
+  // Sample a couple of texels out, and average a small cross, so the normal
+  // comes from the shape of the paint rather than from single-pixel steps.
+  vec2 e = uTexel * 1.8;
+  float hL = (heightAt(vUV - vec2(e.x, 0.0)) + heightAt(vUV - vec2(e.x, e.y)) + heightAt(vUV - vec2(e.x, -e.y))) / 3.0;
+  float hR = (heightAt(vUV + vec2(e.x, 0.0)) + heightAt(vUV + vec2(e.x, e.y)) + heightAt(vUV + vec2(e.x, -e.y))) / 3.0;
+  float hD = (heightAt(vUV - vec2(0.0, e.y)) + heightAt(vUV - vec2(e.x, e.y)) + heightAt(vUV + vec2(e.x, -e.y))) / 3.0;
+  float hU = (heightAt(vUV + vec2(0.0, e.y)) + heightAt(vUV + vec2(e.x, e.y)) + heightAt(vUV - vec2(e.x, -e.y))) / 3.0;
+  // Shallow. A steep normal turns every brush mark into embossed plastic.
+  vec3 n = normalize(vec3((hL - hR) * 5.5, (hD - hU) * 5.5, 1.0));
 
   vec3 L = normalize(uLightDir);
-  float diffuse = 0.80 + 0.45 * dot(n, L);
+  float diffuse = 0.88 + 0.26 * dot(n, L);
 
   vec3 V = vec3(0.0, 0.0, 1.0);
   vec3 H = normalize(L + V);
   float sheen = uVarnish + surf.g * uGloss;
-  float spec = pow(max(dot(n, H), 0.0), 26.0) * sheen * cover;
+  float spec = pow(max(dot(n, H), 0.0), 34.0) * sheen * cover;
 
   vec3 colour = albedo * diffuse + vec3(spec);
   // Squinting at a painting is how you check its values without hue getting

@@ -34,7 +34,7 @@ function noise1d(x, seed = 0) {
  * Flat landscape brush: a block of bristles, frayed at the working edge.
  * `teeth` is the bristle count across the width.
  */
-function flatMask({ teeth = 26, fray = 0.22, softU = 0.03, softV = 0.45, seed = 1 } = {}) {
+function flatMask({ teeth = 26, fray = 0.22, softU = 0.03, softV = 0.30, seed = 1 } = {}) {
   return (u, v) => {
     const streak = 0.62 + 0.38 * noise1d(u * teeth, seed);
     const clump = 0.55 + 0.45 * noise1d(u * teeth * 0.31, seed + 7);
@@ -156,15 +156,69 @@ function ragMask() {
   };
 }
 
-/** Renders a mask function into a Uint8Array ready for an R8 texture. */
-export function rasterizeMask(fn, res = MASK_RES) {
-  const data = new Uint8Array(res * res);
+/**
+ * Renders a mask function into an RG8 texture.
+ *
+ *   R = the bristles themselves, streaks and all
+ *   G = the ENVELOPE: the same footprint with the streaks smoothed out
+ *
+ * Both are needed because a loaded brush does not paint stripes with bare
+ * canvas between them. It lays a continuous film and the bristles rake ridges
+ * into its surface. Deposit therefore follows the envelope, while the streaks
+ * drive impasto height -- and only when the paint runs out, or the touch is
+ * light enough that the canvas tooth wins, do the bristles start to show as
+ * actual gaps. Using the streaky value for coverage made every stroke a sparse
+ * comb, so crossing strokes wove into a lattice instead of covering.
+ */
+export function rasterizeMask(fn, res = MASK_RES, softness = 0.055) {
+  const raw = new Float32Array(res * res);
   for (let y = 0; y < res; y++) {
     const v = (y + 0.5) / res;
     for (let x = 0; x < res; x++) {
-      const u = (x + 0.5) / res;
-      data[y * res + x] = Math.round(clamp01(fn(u, v)) * 255);
+      raw[y * res + x] = clamp01(fn((x + 0.5) / res, v));
     }
+  }
+
+  // Separable box blur wide enough to erase bristle spacing but not the shape.
+  const r = Math.max(1, Math.round(res * softness));
+  const tmp = new Float32Array(res * res);
+  const env = new Float32Array(res * res);
+  for (let y = 0; y < res; y++) {
+    for (let x = 0; x < res; x++) {
+      let sum = 0;
+      let n = 0;
+      for (let k = -r; k <= r; k++) {
+        const xx = x + k;
+        if (xx < 0 || xx >= res) continue;
+        sum += raw[y * res + xx];
+        n++;
+      }
+      tmp[y * res + x] = sum / n;
+    }
+  }
+  let peak = 0;
+  for (let y = 0; y < res; y++) {
+    for (let x = 0; x < res; x++) {
+      let sum = 0;
+      let n = 0;
+      for (let k = -r; k <= r; k++) {
+        const yy = y + k;
+        if (yy < 0 || yy >= res) continue;
+        sum += tmp[yy * res + x];
+        n++;
+      }
+      const e = sum / n;
+      env[y * res + x] = e;
+      if (e > peak) peak = e;
+    }
+  }
+
+  // Normalise so the middle of the footprint is fully covering.
+  const gain = peak > 0.001 ? 1 / peak : 1;
+  const data = new Uint8Array(res * res * 2);
+  for (let i = 0; i < res * res; i++) {
+    data[i * 2] = Math.round(raw[i] * 255);
+    data[i * 2 + 1] = Math.round(clamp01(env[i] * gain) * 255);
   }
   return data;
 }
@@ -188,6 +242,11 @@ export function rasterizeMask(fn, res = MASK_RES) {
 // soak     surface volume at which pickup runs at its full rate
 // soften   colour a pass takes on from the surface even when the tool is
 //          full and no paint is moving -- this is wet-on-wet blending
+// envelope how much the footprint's coverage shape is smoothed away from
+//          the bristle streaks. Small for a steel knife edge, large for a
+//          blender that should not stamp any pattern of its own
+// smudge   isotropic diffusion strength. This is what a blender actually
+//          does; smearing a footprint along a path only makes stripes
 // jitter   how much the bristle pattern shifts between dabs; without it
 //          repeated passes stack the same ribs into corduroy
 // bleed    how freely paint spreads sideways through the bristle bed. High for
@@ -225,7 +284,7 @@ const BRUSH_DEFAULTS = {
 
 function tool(def) {
   const t = { ...BRUSH_DEFAULTS, ...def };
-  t.mask = rasterizeMask(t.shape);
+  t.mask = rasterizeMask(t.shape, MASK_RES, t.envelope);
   return t;
 }
 
@@ -237,7 +296,7 @@ export const TOOLS = [
     rackName: '2 inch',
     blurb:
       'The one he reaches for constantly. Skies, water, big clouds, the base of every tree and bush. Drag it flat to blend, tap its corner to build.',
-    shape: flatMask({ teeth: 30, fray: 0.24, softV: 0.50 }),
+    shape: flatMask({ teeth: 30, fray: 0.24, softV: 0.30 }),
     inches: 2.0,
     range: [0.5, 5.0],
     hold: 16.0,
@@ -247,9 +306,11 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 1.0,
     jitter: 0.055,
-    soften: 1.3,
+    envelope: 0.055,
+    smudge: 0.05,
+    soften: 0.3,
     dryOut: 0.05,
-    aspect: 0.30,
+    aspect: 0.55,
     spacing: 0.05,
     body: 0.8,
     followStroke: false,
@@ -260,7 +321,7 @@ export const TOOLS = [
     short: '1"',
     rackName: '1 inch',
     blurb: 'Same brush, half the reach. Smaller skies, tree trunks, tighter blending.',
-    shape: flatMask({ teeth: 20, fray: 0.26, softV: 0.52, seed: 11 }),
+    shape: flatMask({ teeth: 20, fray: 0.26, softV: 0.32, seed: 11 }),
     inches: 1.0,
     range: [0.25, 3.0],
     hold: 14.0,
@@ -270,9 +331,11 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 1.0,
     jitter: 0.055,
-    soften: 1.3,
+    envelope: 0.055,
+    smudge: 0.05,
+    soften: 0.3,
     dryOut: 0.06,
-    aspect: 0.34,
+    aspect: 0.58,
     spacing: 0.055,
   }),
   tool({
@@ -292,7 +355,8 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 0.7,
     jitter: 0.012,
-    soften: 0.7,
+    envelope: 0.03,
+    soften: 0.22,
     dryOut: 0.14,
     aspect: 0.62,
     spacing: 0.068,
@@ -316,7 +380,8 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 0.7,
     jitter: 0.05,
-    soften: 0.7,
+    envelope: 0.04,
+    soften: 0.22,
     dryOut: 0.16,
     aspect: 1.0,
     spacing: 0.075,
@@ -338,9 +403,11 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 0.9,
     jitter: 0.04,
-    soften: 1.0,
+    envelope: 0.045,
+    smudge: 0.04,
+    soften: 0.26,
     dryOut: 0.09,
-    aspect: 1.35,
+    aspect: 1.3,
     spacing: 0.068,
     followStroke: true,
   }),
@@ -360,9 +427,11 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 1.0,
     jitter: 0.05,
-    soften: 1.2,
+    envelope: 0.055,
+    smudge: 0.05,
+    soften: 0.3,
     dryOut: 0.07,
-    aspect: 0.9,
+    aspect: 1.0,
     spacing: 0.062,
   }),
   tool({
@@ -382,7 +451,8 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 0.8,
     jitter: 0.006,
-    soften: 0.35,
+    envelope: 0.012,
+    soften: 0.12,
     dryOut: 0.1,
     aspect: 5.0,
     spacing: 0.038,
@@ -406,7 +476,8 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 0.8,
     jitter: 0.03,
-    soften: 0.5,
+    envelope: 0.02,
+    soften: 0.16,
     dryOut: 0.11,
     aspect: 1.0,
     spacing: 0.068,
@@ -430,7 +501,8 @@ export const TOOLS = [
     soak: 0.6,
     bleed: 0.15,
     jitter: 0.004,
-    soften: 0.5,
+    envelope: 0.01,
+    soften: 0.14,
     dryOut: 0.09,
     aspect: 0.16,
     spacing: 0.032,
@@ -458,7 +530,8 @@ export const TOOLS = [
     soak: 0.6,
     bleed: 0.15,
     jitter: 0.004,
-    soften: 0.5,
+    envelope: 0.01,
+    soften: 0.14,
     dryOut: 0.09,
     aspect: 0.22,
     spacing: 0.03,
@@ -486,6 +559,7 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 0.15,
     jitter: 0.004,
+    envelope: 0.01,
     soften: 0.0,
     dryOut: 0.1,
     aspect: 0.2,
@@ -501,19 +575,21 @@ export const TOOLS = [
     blurb:
       'A dry 2" brush with no paint on it. Pure blending -- softens edges, pulls mist across mountains, feathers a horizon away.',
     category: 'utility',
-    shape: flatMask({ teeth: 34, fray: 0.3, softV: 0.75, seed: 23 }),
+    shape: flatMask({ teeth: 8, fray: 0.12, softV: 0.6, seed: 23 }),
     inches: 2.0,
     range: [0.4, 5.0],
     hold: 1.5,
-    flow: 0.6,
-    pickup: 5.0,
+    flow: 0.22,
+    pickup: 1.2,
     knee: 0.4,
     soak: 0.9,
     bleed: 1.2,
     jitter: 0.09,
-    soften: 2.2,
+    envelope: 0.09,
+    smudge: 0.95,
+    soften: 0.55,
     dryOut: 0.2,
-    aspect: 0.32,
+    aspect: 0.6,
     spacing: 0.045,
     body: 0.35,
     level: 0.25,
@@ -536,6 +612,8 @@ export const TOOLS = [
     soak: 0.9,
     bleed: 1.0,
     jitter: 0.06,
+    envelope: 0.07,
+    smudge: 0.3,
     soften: 0.0,
     dryOut: 0.1,
     aspect: 1.0,

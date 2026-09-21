@@ -108,12 +108,12 @@ export class Engine {
     this.view = {
       gesso: hexToRgb(CANVAS_GESSO),
       lightDir: [-0.45, 0.62, 0.65],
-      relief: 1.0,
-      gloss: 0.38,
+      relief: 0.46,
+      gloss: 0.22,
       varnish: 0.08,
       squint: 0,
       weaveScale: 5.5,
-      weaveDepth: 0.22,
+      weaveDepth: 0.30,
     };
 
     this.readBuffer = new Float32Array(4);
@@ -130,10 +130,11 @@ export class Engine {
   maskTexture(toolDef) {
     if (!this.maskTextures.has(toolDef.id)) {
       const gl = this.gl;
-      const tex = createTexture(gl, MASK_RES, MASK_RES, gl.R8, gl.LINEAR);
+      const tex = createTexture(gl, MASK_RES, MASK_RES, gl.RG8, gl.LINEAR);
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, MASK_RES, MASK_RES, gl.RED, gl.UNSIGNED_BYTE, toolDef.mask);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, MASK_RES, MASK_RES, gl.RG, gl.UNSIGNED_BYTE, toolDef.mask);
       this.maskTextures.set(toolDef.id, tex);
     }
     return this.maskTextures.get(toolDef.id);
@@ -300,6 +301,8 @@ export class Engine {
         uScrape: d.scrape,
         uClearMix: d.clearMix,
         uOpacity: d.opacity,
+        uSmudge: d.smudge,
+        uSmudgeR: Math.max(1, d.size * 0.055),
       });
       drawQuad(gl);
       this._blitBack(surface, rect);
@@ -638,7 +641,7 @@ export class Engine {
       if (mask) {
         const mx = Math.min(MASK_RES - 1, ((i % n) * mscale) | 0);
         const my = Math.min(MASK_RES - 1, (((i / n) | 0) * mscale) | 0);
-        bristle = mask[my * MASK_RES + mx] / 255;
+        bristle = mask[(my * MASK_RES + mx) * 2 + 1] / 255;
       }
       if (bristle <= 0.004) continue;
       const a = buf[i * 4 + 3];
