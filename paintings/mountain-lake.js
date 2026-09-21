@@ -74,25 +74,35 @@ const skyPink = s.mix([['titanium-white', 60], ['bright-red', 1], ['yellow-ochre
 log('sky pink  ', skyPink.hex);
 band(420, 620, 26, 0.5);
 
-// Blend with a clean brush, in both diagonals and in both directions. Working
-// left to right every time carries the paint one way and leaves the far side
-// starved; the criss-cross has to actually cross.
+// Blend with a clean brush, in both diagonals and in both directions.
 //
-// Lightly, and not many times. Eighty-odd passes laid on a regular grid left a
-// lattice of lozenges across the sky where the diagonals crossed each other in
-// the same places over and over. The paths are jittered so nothing lines up,
-// and the whole thing is six passes, which is about what it takes by hand.
+// Properly diagonal. A rise of eighty over a run of six hundred is seven
+// degrees off horizontal, which carries paint SIDEWAYS along a band instead of
+// across the join between two bands -- and the sky's colour changes almost
+// entirely up and down. Measured: ten such passes left the colour at every
+// height exactly where it started, to the byte, while scrubbing half the paint
+// off wherever the strokes began.
 s.clean();
 s.set({ pressure: 0.3 });
-for (let i = 0; i < 6; i++) {
-  const y = lerp(60, 580, i / 5) + jit(26);
-  const dir = i % 2 ? 1 : -1;
+for (let i = 0; i < 7; i++) {
+  const x0 = -80 + i * 70 + jit(30);
+  for (let x = x0; x < W + 120; x += 190) {
+    const dir = i % 2 ? 1 : -1;
+    const rise = 260 + jit(60);
+    const y = lerp(80, 540, ((i * 3 + x / 400) % 4) / 4) + jit(30);
+    s.stroke([[x, y - rise * 0.5 * dir], [x + 230, y + rise * 0.5 * dir]], { step: 22 });
+    s.stroke([[x + 230, y - rise * 0.4 * dir], [x, y + rise * 0.4 * dir]], { step: 22 });
+  }
+}
+// Then soften it with the blender, which spreads what is there where it is
+// rather than carrying it along a path. This is what takes the last of the
+// stroke marks out of a sky.
+s.tool('util-blender', 2.0).set({ pressure: 0.3 });
+for (let i = 0; i < 5; i++) {
+  const y = lerp(40, 600, i / 4) + jit(30);
   for (let sec = 0; sec < 3; sec++) {
-    const a = -60 + sec * 520 + jit(40);
-    const b = a + 640;
-    const rise = 70 + jit(24);
-    s.stroke([[a, y + rise * dir], [b, y - rise * dir]], { step: 34 });
-    s.stroke([[b, y - rise * dir * 0.6 + jit(20)], [a, y + rise * dir * 0.6 + jit(20)]], { step: 34 });
+    const a = -60 + sec * 520 + jit(30);
+    s.stroke([[a, y + jit(40)], [a + 640, y + jit(40)]], { step: 34 });
   }
 }
 await stage('sky');
@@ -201,10 +211,10 @@ for (let i = 0; i < ridge.length - 1; i++) {
     s.stroke([[sx, sy], [sx + nx * r + jit(24), sy + ny * r]], { step: 9 });
   }
 }
-// Cut the ridge back in over the top of it. It is the one edge in the picture
-// that has to stay hard, and pulling the faces down softens it.
-s.tool('knife-5', 0.7).set({ pressure: 0.9 });
-s.stroke(ridge, { step: 4 });
+// No cutting back along the ridge afterwards: travelling ALONG it puts the
+// blade across it, so the mark straddles the line and smears rock half a
+// blade-width up into the sky. The fall-line pulls already leave the ridge as
+// their top edge, which is the whole point of pulling them that way.
 await stage('mountain-mass');
 
 // Snow on the faces that catch the light. It goes on the same way the mass

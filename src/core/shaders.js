@@ -299,30 +299,34 @@ float penetrated(float volume, float contact) {
 // while it lifted at the maximum rate, so one pull of a knife came out THINNER
 // than the wet ground it was pulled across: -0.18 layers where it should have
 // left about a third of one.
+// What the tool is carrying where it touches, in CANVAS LAYERS rather than as
+// a fraction of its own capacity -- capped at one covering layer, because only
+// the film at the tip is in contact and the rest is further up the bristles.
+//
+// Load is a fill fraction, and the two are not the same question. A 2" brush
+// holds about sixteen layers, so half a layer -- plenty to paint with, and far
+// more than a wet sky carries -- reads as three per cent full. Judged on the
+// fraction, a clean brush could lift an entire sky and still count as empty:
+// it never laid any of it back down, so blending scrubbed a lattice of tracks
+// through the sky where the criss-cross strokes crossed and lifted twice.
+float tipFilm(float load) {
+  return clamp(load * uHold / max(uSoak, 1e-4), 0.0, 1.0);
+}
+
 float layShare(float load) {
   // A palette is a source, not a surface being painted: a tool put into a pile
   // fills from it however much it is already carrying.
   if (uPalette > 0.5) return 0.0;
-  // Judged on the film at the TIP, in canvas layers, not on the tool's whole
-  // capacity. A 2" brush holds about sixteen layers and a wet sky is about
-  // one, so against the whole reservoir a clean brush could lift the entire
-  // sky and still not be full enough to lay any of it back down -- it only
-  // ever took paint off. Blending a sky scrubbed a lattice of tracks through
-  // it where the criss-cross strokes crossed and lifted twice.
-  //
-  // This is the mechanism blending actually works by: a bristle picks paint up
-  // at one dab and puts it down over the dabs that follow, further along the
-  // stroke.
-  float film = clamp(load * uHold / max(uSoak, 1e-4), 0.0, 1.0);
-  return smoothstep(uKnee * 0.5, uKnee * 1.5, film);
+  return smoothstep(uKnee * 0.5, uKnee * 1.5, tipFilm(load));
 }
 
 // Volume this dab lays onto one surface pixel.
+// layShare carries the taper as well as the direction: above the knee the tool
+// lays at full rate, below it the mark thins out and then turns over into
+// lifting. This is the mechanism blending works by -- a bristle picks paint up
+// at one dab and puts it down over the dabs that follow, further along.
 float giveVolume(float bristle, float contact, float load) {
-  // Two separate things: how much is left to lay (a tool runs out), and which
-  // way paint is moving at all.
-  return uFlow * uDeplete * bristle * contact
-       * min(load / max(uKnee, 1e-4), 1.0) * layShare(load);
+  return uFlow * uDeplete * bristle * contact * layShare(load);
 }
 
 // Pickup, as a change in the bristle's fill fraction. A texel's own holding is
@@ -333,10 +337,8 @@ float giveVolume(float bristle, float contact, float load) {
 float takeLoad(float contact, float volume, float wetness, float load) {
   float here = penetrated(volume, contact);
   float avail = clamp(here / max(uSoak, 1e-4), 0.0, 1.0);
-  // Room left in the film at the tip, not in the whole reservoir -- the same
-  // reason layShare goes by the film.
-  float film = clamp(load * uHold / max(uSoak, 1e-4), 0.0, 1.0);
-  float amt = uPickup * uDeplete * contact * avail * wetness * (1.0 - film)
+  // Room left in the film at the tip, not in the whole reservoir.
+  float amt = uPickup * uDeplete * contact * avail * wetness * (1.0 - tipFilm(load))
             * (1.0 - layShare(load));
   // A pass can lift at most this share of the film it crosses. A dry brush
   // dragged over wet paint takes some of it up; it does not take nearly all
@@ -355,8 +357,7 @@ float takeVolume(float bristle, float contact, float volume, float wetness, floa
 }
 
 float giveLoad(float contact, float load) {
-  return uFlow * uDeplete * contact
-       * min(load / max(uKnee, 1e-4), 1.0) * layShare(load) / max(uHold, 1e-4);
+  return uFlow * uDeplete * contact * layShare(load) / max(uHold, 1e-4);
 }
 `;
 
