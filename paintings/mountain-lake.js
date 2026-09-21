@@ -66,7 +66,7 @@ const skyMid = mixFor([['titanium-white', 16], ['phthalo-blue', 1], ['midnight-b
 log('sky mid   ', skyMid.hex);
 band(170, 340, 24, 0.6);
 
-const skyWarm = mixFor([['titanium-white', 26], ['yellow-ochre', 2], ['van-dyke-brown', 1], ['bright-red', 1], ['midnight-black', 2]], 'brush-2inch', 2.0);
+const skyWarm = mixFor([['titanium-white', 40], ['yellow-ochre', 1], ['van-dyke-brown', 3], ['midnight-black', 1]], 'brush-2inch', 2.0);
 log('sky warm  ', skyWarm.hex);
 band(320, 560, 24, 0.5);
 
@@ -466,7 +466,7 @@ for (const [x, y, len] of [
 await stage('water');
 
 // ------------------------------------------------- 10. banks and foreground
-mixFor([['titanium-white', 20], ['yellow-ochre', 1], ['van-dyke-brown', 1], ['midnight-black', 1]], 'knife-10', 0.9);
+mixFor([['titanium-white', 34], ['yellow-ochre', 1], ['van-dyke-brown', 2], ['midnight-black', 1]], 'knife-10', 0.9);
 s.tool('knife-10', 0.9).set({ pressure: 0.5 });
 for (const [x, y, len] of [[1150, 952, 250], [1206, 1000, 234], [1268, 1052, 172], [1120, 916, 200]]) {
   s.stroke([[x, y], [x + len, y + 20]], { step: 7 });
