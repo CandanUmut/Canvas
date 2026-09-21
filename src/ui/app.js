@@ -1409,6 +1409,9 @@ function makeScript() {
       return this;
     },
     tool(id, inches) {
+      // Say so plainly. A bad id used to reach the engine and die there with
+      // "cannot read properties of undefined", twelve stages into a painting.
+      if (!TOOLS_BY_ID[id]) throw new Error(`no such tool: ${JSON.stringify(id)}`);
       selectTool(id);
       if (inches) {
         state.sizes[id] = inches;

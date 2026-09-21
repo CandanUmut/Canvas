@@ -505,9 +505,7 @@ await stage('foreground');
 
 // --------------------------------------------- 11. the framing evergreens
 // Nearest, so darkest and largest. They hold the two edges of the picture in.
-mixFor([['sap-green', 3], ['phthalo-blue', 2], ['midnight-black', 3], ['van-dyke-brown', 1]], {
-  tool: 'brush-fan',
-});
+mixFor([['sap-green', 3], ['phthalo-blue', 2], ['midnight-black', 3], ['van-dyke-brown', 1]], 'brush-fan', 0.8);
 s.set({ pressure: 0.62 });
 for (const [x, base, top, w, sz] of [
   [116, 860, 130, 168, 0.8], [36, 916, 250, 140, 0.7], [196, 884, 338, 120, 0.6],
