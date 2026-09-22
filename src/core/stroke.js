@@ -40,6 +40,9 @@ export class StrokeRunner {
     if (!force && this.bristles && this.sinceRoll < 0.8) return this.bristles;
     this.sinceRoll = 0;
     this.bristles = {
+      // One number per contact. The bundle rearranges when you set the tool
+      // down, and holds its arrangement while it travels.
+      seed: Math.random() * 64.0,
       cut: Math.random() * (t.cut ?? 0),
       ofs: [
         (Math.random() - 0.5) * (t.jitter ?? 0),
@@ -221,6 +224,7 @@ export class StrokeRunner {
       moving,
       bristleCut: bristles.cut,
       bristleOfs: bristles.ofs,
+      seed: bristles.seed,
       flow: t.flow * settings.flowScale * press * (1 + thinner * 0.4),
       pickup: t.pickup * settings.blendScale,
       soften: t.soften * settings.blendScale,
@@ -229,7 +233,12 @@ export class StrokeRunner {
       smudge: (t.smudge ?? 0) * settings.blendScale,
       // Thinner makes paint flow; it should not erase the pigment. A thinned
       // liner stroke of Van Dyke Brown is still a dark line.
-      opacity: (paint.opacity ?? 1) * (1 - thinner * 0.45),
+      // The tool's own opacity, not the tube's. They are the same the moment
+      // you pick a colour off the palette board, but a mixture you made, or a
+      // colour picked up off the canvas, carries its own -- and the engine has
+      // been tracking that all along and then throwing it away in favour of
+      // whichever tube happened to be selected in the panel.
+      opacity: (this.engine.brush.opacity ?? paint.opacity ?? 1) * (1 - thinner * 0.45),
       body: paint.body * (1 - thinner * 0.7),
       wetness: paint.wetness ?? 1,
       clearMix: paint.clear ? 1 : 0,

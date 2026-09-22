@@ -6,6 +6,7 @@ import { TOOLS, TOOLS_BY_ID, TOOL_CATEGORIES, MASK_RES } from '../data/brushes.j
 import { PIGMENTS, MEDIUMS, ALL_PAINTS, PAINTS_BY_ID, hexToRgb, rgbToHex } from '../data/colors.js';
 import { LESSONS } from '../data/lessons.js';
 import * as storage from '../core/storage.js';
+import { paintFromPicture } from './autopaint.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -62,6 +63,7 @@ let paletteSurface;
 let stroke;
 let needsRender = true;
 let dpr = 1;
+let scriptApi = null;
 
 // ------------------------------------------------------------- saving ---
 
@@ -1013,6 +1015,74 @@ function applyBaseCoat(mediumId) {
   toast(`${m.name} down. Work quickly while it is wet — that is the whole idea.`);
 }
 
+// ----------------------------------------------------- painting a picture ---
+
+let painting = null;
+
+/**
+ * Paint from a photograph, with the real tools and the real wet paint. It is
+ * not a filter over the image: every stroke goes through the same simulation
+ * your own hand does, so it blends into what is wet, runs out, and picks up
+ * what it is dragged through.
+ */
+async function paintPicture(file) {
+  if (painting) {
+    painting.stop = true;
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = () => rej(new Error('could not read that picture'));
+      im.src = url;
+    });
+
+    // Fit the picture to the canvas, covering it.
+    const w = canvasSurface.width;
+    const h = canvasSurface.height;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    const scale = Math.max(w / img.width, h / img.height);
+    const dw = img.width * scale;
+    const dh = img.height * scale;
+    ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    const px = ctx.getImageData(0, 0, w, h).data;
+    const data = new Float32Array(w * h * 3);
+    for (let i = 0; i < w * h; i++) {
+      data[i * 3] = px[i * 4] / 255;
+      data[i * 3 + 1] = px[i * 4 + 1] / 255;
+      data[i * 3 + 2] = px[i * 4 + 2] / 255;
+    }
+
+    painting = { stop: false };
+    $('btn-picture').textContent = 'Stop painting';
+    $('btn-picture').classList.add('busy');
+    engine.pushHistory(canvasSurface);
+
+    await paintFromPicture(window.studio.script, { data, width: w, height: h }, {
+      shouldStop: () => painting.stop,
+      onProgress: (done, total, label) => {
+        toast(done >= total ? 'Finished.' : `Painting — pass ${done + 1} of ${total}, ${label}`);
+        needsRender = true;
+      },
+    });
+  } catch (err) {
+    toast(err.message || String(err));
+  } finally {
+    URL.revokeObjectURL(url);
+    painting = null;
+    $('btn-picture').textContent = 'Paint a picture';
+    $('btn-picture').classList.remove('busy');
+    updateUndoButtons();
+    scheduleSave();
+    needsRender = true;
+  }
+}
+
 function wireTopBar() {
   $('btn-canvas').addEventListener('click', (e) =>
     showMenu(e.currentTarget, [
@@ -1040,6 +1110,13 @@ function wireTopBar() {
       },
     ])
   );
+
+  $('btn-picture').addEventListener('click', () => $('picture-file').click());
+  $('picture-file').addEventListener('change', (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (file) paintPicture(file);
+  });
 
   $('btn-dry').addEventListener('click', () => {
     engine.pushHistory(canvasSurface);
@@ -1345,9 +1422,266 @@ function wireKeyboard() {
 window.__tools = TOOLS;
 window.__paints = ALL_PAINTS.map((p) => ({ ...p, rgb: hexToRgb(p.hex) }));
 
+/**
+ * A scripted painter. Everything the pointer does, done from code: the same
+ * StrokeRunner, the same settings, the same tool and paint selection. It
+ * exists so a painting can be written down, replayed exactly, and compared
+ * against the last run -- which is the only way to tell whether a change to
+ * the simulation made the picture better or just different.
+ *
+ * Coordinates are in canvas pixels with the origin at the TOP LEFT, because
+ * that is how a reference photograph is measured. They are flipped to GL's
+ * bottom-left origin on the way in.
+ */
+function makeScript() {
+  // A painting is written in one fixed set of coordinates -- 1440 across a
+  // 24 in canvas -- and scaled to whatever canvas it is replayed on. That is
+  // what lets the same script be tried quickly on a small canvas and then
+  // painted properly on a big one. Tool sizes need no scaling: they are in
+  // inches already.
+  let designWidth = 1440;
+  const k = () => canvasSurface.width / designWidth;
+  const pt = (p) => ({ x: p[0] * k(), y: canvasSurface.height - p[1] * k() });
+
+  // A scripted stroke is not racing a display, so it never thins its dabs out
+  // to keep a frame rate. Replaying the same script has to give the same
+  // picture on a fast machine and a slow one.
+  const UNLIMITED = 1e9;
+
+  const settings = () =>
+    settingsFor({ pointerType: 'mouse', pressure: 0.5, tiltX: 0, tiltY: 0 });
+
+  /** Walk a polyline, subdividing so the runner sees a smooth path. */
+  function path(points, { step = 6, close = false } = {}) {
+    const list = close ? [...points, points[0]] : points;
+    const out = [list[0]];
+    for (let i = 1; i < list.length; i++) {
+      const a = list[i - 1];
+      const b = list[i];
+      const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const n = Math.max(1, Math.ceil(d / step));
+      for (let k = 1; k <= n; k++) {
+        out.push([a[0] + (b[0] - a[0]) * (k / n), a[1] + (b[1] - a[1]) * (k / n)]);
+      }
+    }
+    return out;
+  }
+
+  return {
+    get state() {
+      return state;
+    },
+    get size() {
+      return { w: canvasSurface.width, h: canvasSurface.height, scale: k() };
+    },
+    /** The width the coordinates in this script are written against. */
+    design(width) {
+      designWidth = width;
+      return this;
+    },
+    /** Start again on a canvas of a given size, in pixels and inches. */
+    canvas(w, h, inches = 24) {
+      newCanvas({ w, h, wIn: inches });
+      return this;
+    },
+    tool(id, inches) {
+      // Say so plainly. A bad id used to reach the engine and die there with
+      // "cannot read properties of undefined", twelve stages into a painting.
+      if (!TOOLS_BY_ID[id]) throw new Error(`no such tool: ${JSON.stringify(id)}`);
+      selectTool(id);
+      if (inches) {
+        state.sizes[id] = inches;
+        refreshToolSliders();
+      }
+      return this;
+    },
+    paint(id, opts) {
+      selectPaint(id, opts || {});
+      return this;
+    },
+    /** Set any of pressure, thinner, flowScale, blendScale, angle, dirtyBrush. */
+    set(props) {
+      Object.assign(state, props);
+      refreshToolSliders();
+      return this;
+    },
+    baseCoat(mediumId) {
+      applyBaseCoat(mediumId);
+      return this;
+    },
+    dry(amount = 1) {
+      engine.dry(canvasSurface, amount);
+      needsRender = true;
+      return this;
+    },
+    clean() {
+      engine.cleanBrush();
+      updateBrushState({ colour: [0.97, 0.96, 0.94], load: 0 });
+      return this;
+    },
+    /** Reload the tool with the charged colour, as a stroke start would. */
+    reload() {
+      engine.rechargeBrush(state.dirtyBrush);
+      return this;
+    },
+    /**
+     * One stroke along a polyline. `step` is the distance between the samples
+     * handed to the runner -- the equivalent of how fast a hand moved.
+     */
+    stroke(points, opts = {}) {
+      const s = settings();
+      // Subdivide finely enough for the canvas actually being painted.
+      const pts = path(points, { ...opts, step: (opts.step ?? 6) / Math.max(k(), 0.35) });
+      const input = { pointerType: 'mouse', pressure: 0.5, tiltX: 0, tiltY: 0 };
+      if (opts.autoReload !== false && state.autoReload && !s.tool.noLoad) {
+        engine.rechargeBrush(state.dirtyBrush);
+      }
+      // A replay has nothing to undo back to, and a snapshot per stroke is by
+      // far the most expensive thing in a script that lays thousands of them.
+      if (opts.history) engine.pushHistory(canvasSurface);
+      stroke.beginFrame(UNLIMITED);
+      stroke.begin(canvasSurface, pt(pts[0]), input, s);
+      for (let i = 1; i < pts.length; i++) {
+        stroke.beginFrame(UNLIMITED);
+        stroke.extend(pt(pts[i]), input, s);
+      }
+      stroke.end();
+      // Reading the bristles back stalls the pipeline, and a script lays
+      // hundreds of strokes with nothing between them, so it is done only when
+      // asked for. The reload decision does not need it: the engine goes by
+      // whether the tool has been used, not by a cached number.
+      if (opts.sample) updateBrushState(engine.sampleReservoir());
+      needsRender = true;
+      return this;
+    },
+    /** A press with no travel: foliage, a cloud, a dot of foam. */
+    tap(p, opts = {}) {
+      return this.stroke([p, [p[0] + 0.01, p[1]]], opts);
+    },
+    /**
+     * Mix a colour the way it is actually mixed: lay the pigments out on the
+     * board in the proportions you want and drag a tool through them. Parts
+     * are areas, so `[['titanium-white', 8], ['phthalo-blue', 1]]` is eight
+     * times as much white as blue, and the bristles do the mixing.
+     *
+     * Returns what ended up on the tool, so a script can check its colour
+     * instead of hoping.
+     */
+    mix(parts, { passes = 3, tool } = {}) {
+      if (tool) selectTool(tool);
+      const t = TOOLS_BY_ID[state.toolId];
+      const total = parts.reduce((n, p) => n + p[1], 0);
+      // Scrape the board first, the way you would before mixing a new colour.
+      // This used to try to do it with a blob of nothing -- which lays nothing
+      // and therefore removes nothing, so every mixture went down on top of
+      // all the ones before it and the colours drifted darker as the painting
+      // went on. The cloud grey came off the board at #1c343d where the same
+      // ratio on a clean board gives #839a9e.
+      engine.clear(paletteSurface);
+      state.squeezeSlot = 0;
+      const y = PALETTE_H * 0.52;
+      const x0 = PALETTE_W * 0.14;
+      const x1 = PALETTE_W * 0.86;
+      const span = x1 - x0;
+      let at = x0;
+      for (const [id, n] of parts) {
+        const paint = PAINTS_BY_ID[id];
+        const w = (span * n) / total;
+        // Enough piles side by side to fill that share of the strip, so the
+        // width a bristle crosses really is the proportion asked for. The
+        // floor has to stay small: almost every landscape colour is a pile of
+        // white with a touch of something in it, and a floor of half an inch
+        // turned "thirty parts white to one of Phthalo Blue" into about six to
+        // one -- which is the difference between a sky and a swimming pool.
+        const r = Math.max(4, Math.min(46, w * 0.55));
+        const count = Math.max(1, Math.round(w / (r * 1.2)));
+        for (let i = 0; i < count; i++) {
+          engine.blob(paletteSurface, {
+            x: at + ((i + 0.5) * w) / count,
+            y,
+            radius: r,
+            colour: hexToRgb(paint.hex),
+            tint: paint.tint,
+            amount: paint.fluid ? 2.5 : 5.0,
+            body: paint.body,
+            wetness: 1,
+            clearMix: paint.clear ? 1 : 0,
+            opacity: paint.opacity,
+          });
+        }
+        at += w;
+      }
+      engine.cleanBrush();
+      // Press into the piles. Mixing was running at whatever pressure the last
+      // stroke happened to leave on the slider, so a colour mixed after a light
+      // blending pass came off the board quite different from the same ratio
+      // mixed after a firm one -- the cloud grey moved from #8d999b to #566367
+      // on nothing but that.
+      const heldPressure = state.pressure;
+      state.pressure = 0.85;
+      const input = { pointerType: 'mouse', pressure: 0.5, tiltX: 0, tiltY: 0 };
+      const set = settings();
+      for (let pass = 0; pass < passes; pass++) {
+        const yy = y + (pass % 2 ? 1 : -1) * 10;
+        const fwd = pass % 2 === 0;
+        const from = fwd ? x0 : x1;
+        const to = fwd ? x1 : x0;
+        stroke.beginFrame(UNLIMITED);
+        stroke.begin(paletteSurface, { x: from, y: yy }, input, set);
+        const n = 40;
+        for (let i = 1; i <= n; i++) {
+          stroke.beginFrame(UNLIMITED);
+          stroke.extend({ x: from + ((to - from) * i) / n, y: yy }, input, set);
+        }
+        stroke.end();
+      }
+      state.pressure = heldPressure;
+      // Read the bristles FIRST: stockFromBrush copies engine.brush.colour,
+      // which only becomes the mixture once the reservoir has been sampled.
+      // The other way round it stored the colour the brush was cleaned to and
+      // every stroke afterwards reloaded with that.
+      const r = engine.sampleReservoir();
+      engine.stockFromBrush();
+      updateBrushState(r);
+      needsRender = true;
+      return { colour: r.colour, hex: rgbToHex(r.colour), load: r.load, tool: t.id };
+    },
+    /**
+     * Dip the tool in a colour directly, the way the eyedropper does. `region`
+     * dips only part of the bristle bed -- {x0, y0, x1, y1} in 0..1 -- so a
+     * tool can carry two colours at once: dark on one corner of a fan brush
+     * and the highlight on the other, laying a bough and its light in one
+     * touch.
+     */
+    colour(rgb, { opacity = 0.92, tint = 1, region = null, replace = true } = {}) {
+      engine.loadBrush(rgb.slice(), tint, 1, replace, opacity, region);
+      if (!region) engine.setStock(rgb.slice(), tint, opacity);
+      updateBrushState({ colour: rgb, load: 1 });
+      return this;
+    },
+    /** Whatever is on the bristles right now, as an sRGB triple. */
+    brush() {
+      return engine.sampleReservoir();
+    },
+    /** What is on the canvas at a point, in the same coordinates as a stroke. */
+    at(x, y) {
+      return engine.samplePaint(canvasSurface, x * k(), canvasSurface.height - y * k());
+    },
+    /** The finished picture as raw RGBA, top-down. */
+    pixels() {
+      const img = engine.exportImage(canvasSurface);
+      return { width: img.width, height: img.height, data: Array.from(img.data) };
+    },
+  };
+}
+
 window.studio = {
   get engine() {
     return engine;
+  },
+  get script() {
+    if (!scriptApi) scriptApi = makeScript();
+    return scriptApi;
   },
   get canvas() {
     return canvasSurface;

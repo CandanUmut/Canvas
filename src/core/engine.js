@@ -169,10 +169,19 @@ export class Engine {
 
   // --- brush reservoir ----------------------------------------------------
 
-  /** Dip the brush. `replace` wipes what was there; otherwise it mixes in. */
-  loadBrush(colour, tint, load, replace = true, opacity = 1) {
+  /**
+   * Dip the brush. `replace` wipes what was there; otherwise only the hairs
+   * this dip reaches are changed, which is what lets a tool carry two colours
+   * at once -- dark on one corner of a fan brush and the highlight on the
+   * other, so one touch lays a bough and its light together.
+   *
+   * `region` is the part of the bristle bed going into the paint, in 0..1
+   * bristle space: {x0, y0, x1, y1}. The whole bed by default.
+   */
+  loadBrush(colour, tint, load, replace = true, opacity = 1, region = null) {
     const gl = this.gl;
     const mask = this.maskTexture(this.tool);
+    const r = region || { x0: -0.1, y0: -0.1, x1: 1.1, y1: 1.1 };
     this.reservoir.b.bind();
     this.programs.loadBrush.use().set({
       uRect: FULL_RECT,
@@ -181,13 +190,22 @@ export class Engine {
       uColour: colour,
       uLoad: load,
       uReplace: replace ? 1 : 0,
+      uRegion: [r.x0, r.y0, r.x1, r.y1],
+      uRegionSoft: region ? 0.06 : 0.001,
     });
     drawQuad(gl);
     this._swapReservoir();
-    this.brush.colour = colour;
-    this.brush.tint = tint;
-    this.brush.opacity = opacity;
-    this.brush.load = Math.min(load, 1);
+    // A partial dip leaves the rest of the bed as it was, so the cached colour
+    // is no longer the whole story; sampleReservoir is what tells the truth
+    // about a tool carrying two colours.
+    if (!region) {
+      this.brush.colour = colour;
+      this.brush.tint = tint;
+      this.brush.opacity = opacity;
+      this.brush.load = Math.min(load, 1);
+    } else {
+      this.brush.load = Math.max(this.brush.load, Math.min(load, 1));
+    }
     this.brush.dirty = false;
   }
 
@@ -207,6 +225,12 @@ export class Engine {
     this.loadBrush([0.97, 0.96, 0.94], 1, 0, true, 1);
     this.brush.load = 0;
     this.brush.dirty = false;
+    // A brush you have beaten the devil out of is EMPTY, and has to stay empty
+    // until you dip it again. Leaving the charged colour behind meant the next
+    // stroke's reload filled it straight back up, so cleaning it did nothing at
+    // all -- and cleaning it is how a sky gets blended, how the base of a
+    // mountain gets misted, and how any edge gets softened.
+    this.brush.stock = null;
   }
 
   /**
@@ -216,6 +240,8 @@ export class Engine {
    */
   rechargeBrush(keepDirty = false) {
     const b = this.brush;
+    // Nothing to come back to: the tool was deliberately cleaned.
+    if (!b.stock) return false;
     if (keepDirty) {
       // Keep whatever the tool dragged up; just top the amount back up.
       if (b.load >= 0.92) return false;
@@ -227,7 +253,14 @@ export class Engine {
     // never got its colour back, so one stroke turned it to whatever it had
     // been dragged through and it stayed that way.
     const s = b.stock;
-    if (b.load >= 0.99 && sameColour(b.colour, s.colour)) return false;
+    // `dirty` is set by the first dab of any stroke, so it says "this tool has
+    // been used since it was last filled" without reading anything back off
+    // the GPU. Deciding on the cached load alone meant the decision was only
+    // right if something had happened to call sampleReservoir in between: a
+    // caller that did not -- a replayed painting, say -- left the load reading
+    // 1.0 for ever, so the tool was never topped up again, ran itself down and
+    // started lifting paint instead of laying it.
+    if (!b.dirty && b.load >= 0.99 && sameColour(b.colour, s.colour)) return false;
     this.loadBrush(s.colour, s.tint, 1, true, s.opacity);
     return true;
   }
@@ -264,6 +297,8 @@ export class Engine {
       uBristleOfs: d.bristleOfs || [0, 0],
       uBristleCut: d.bristleCut || 0,
       uBristleBias: tool.bristleBias ?? 0.25,
+      uBristleSplay: tool.splay ?? 0,
+      uSeed: d.seed ?? 0,
       uWeaveScale: surface.weaveScale ?? this.view.weaveScale,
       uWeaveDepth: surface.weaveDepth ?? this.view.weaveDepth,
       uDeplete: d.deplete,
