@@ -3,7 +3,7 @@
 ### What we re-implemented, what we had to add, and what only measurement could have told us
 
 *A technical report on the paint model behind this studio. Notes from building
-it, in the hope they save someone else the same six bugs.*
+it, in the hope they save someone else the same seven bugs.*
 
 ---
 
@@ -24,7 +24,7 @@ so than dress it up.
 
 What we think is worth contributing is narrower and, we hope, more useful:
 
-1. **Six specific ways an implementation of these papers can be wrong** while
+1. **Seven specific ways an implementation of these papers can be wrong** while
    still compiling, still running at 60fps, and still looking broadly like
    paint. Each one we shipped. Each one we found by measuring, not by reading.
 2. **A measurement methodology** for a painting simulator, where the output is
@@ -388,7 +388,8 @@ in §5, and it is the one we added last, which was a mistake.
 
 We can be precise about this because we have the record: of the changes in this
 document, the ones motivated by a measurement all survived. The ones motivated
-by reading the shader and thinking hard about it include two of the six bugs.
+by reading the shader and thinking hard about it include three of the seven
+bugs.
 
 ---
 
@@ -405,8 +406,35 @@ we shipped and the measurement that caught it.
 | 4 | Tip film used as "room" on the palette | Loading capped at 6%; mixtures came off near-black (`#162933` for `#6294a5`) | Mix calibration: measured swatch vs. intended |
 | 5 | Unidirectionality applied to the palette | Palette became pickup-only; could not mix at all | A user. Then a scripted pointer-event reproduction |
 | 6 | Colour decoupling disabled where the tool is full | A full brush sealed shut; only ever paints the last colour clicked | Probe: drag a loaded brush through a contrasting pile, sample what it lays |
+| 7 | Palette piles could not be depleted | Every mixture in the app drifted toward whichever pile was largest | Mix calibration: intended hex vs. measured, before and after |
 
-Bugs 4, 5 and 6 are all the same underlying mistake: **treating the palette as
+Bug 7 deserves its own note, because it was the one with the widest blast
+radius and the one we were least likely to find by looking.
+
+We had pinned the palette so that a pile never lost paint — `take = 0`, plus a
+floor under the volume — reasoning that a mixture you had made needed to stay
+put so you could reload from it. The visible symptom was that you could not
+pull a streak out of a pile. The *invisible* symptom was much worse: **a pile
+that cannot be depleted cannot honour a ratio.** Ask for forty parts white to
+one of ochre, and the white pile is still forty parts white however much you
+take out of it, so the mixture keeps drifting toward whichever pile is
+biggest. Every mixture in the application was wrong, and wrong in the same
+direction — far too light.
+
+Measured against the hexes the paintings were written to produce:
+
+| mixture | intended | pinned piles | piles that deplete |
+|---|---|---|---|
+| warm sky | `#bbaa96` | `#dad7ce` | `#a79e91` |
+| bank sand | `#b9ab96` | `#dedcd1` | `#b2ac9c` |
+
+Summed absolute channel error, 277 → 51. Nobody noticed for weeks, because
+every mixture was wrong *consistently*, so the paintings looked coherent — just
+chalky. A systematic error that preserves internal consistency is close to
+invisible to the eye and trivial for a two-line calibration harness. That
+asymmetry is the argument for §6 in one example.
+
+Bugs 4, 5, 6 and 7 are all the same underlying mistake: **treating the palette as
 a canvas**. Every rule tuned for making a mark on a painting was applied, by
 default, to a surface whose purpose is the opposite. If we were starting again
 we would make the substrate an explicit parameter of the transfer model from
@@ -457,7 +485,7 @@ Stated plainly, because §0 promised it.
 - **Substrate as a first-class concept.** Canvas, palette, knife edge and rag
   are four different contact regimes, and we model them with one flag and some
   `mix()` calls. A model that took the contact regime as an input from the
-  start would be cleaner and would have prevented three of our six bugs.
+  start would be cleaner and would have prevented four of our seven bugs.
 - **Measured pigment basis.** IMPaSTo's eight-basis approach with real pigment
   data, if the performance can be found on a GPU we do not control.
 
