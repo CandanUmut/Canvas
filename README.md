@@ -234,6 +234,11 @@ for the comparison.
 
 ## Where the model comes from
 
+There is a longer write-up of what we built on top of these papers, what we got
+wrong along the way, and how a painting simulator can be measured at all, in
+[docs/simulating-oil-paint.md](docs/simulating-oil-paint.md).
+
+
 - Baxter, Wendt & Lin, **IMPaSTo: A Realistic, Interactive Model for Paint**
   (NPAR 2004) — bidirectional transfer, the unidirectionality rule, and the
   dead zone that stops transfer oscillating.
