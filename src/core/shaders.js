@@ -281,9 +281,6 @@ uniform float uOpacity;   // 0 = pure glaze, 1 = buries what is underneath
 // before it, and a layer is defined here as "fully covering" -- so the film
 // that takes part is a good fraction of one.
 #define MIX_FILM 0.55
-// How readily a palette gives paint up compared with a canvas. Below 1 because
-// a pile is a reservoir you keep going back to, not a mark you are making.
-#define PALETTE_GIVE_UP 0.55
 // A pile is deeper than any mark a tool makes, so it gets its own ceiling.
 #define PALETTE_MAX_VOLUME 6.0
 
@@ -339,6 +336,13 @@ uniform float uKnee;      // load below which the tool starts to run dry
 uniform float uSoak;      // surface volume at which pickup runs at full rate
 uniform float uPalette;   // 1 on the mixing palette: an endless paint source
 uniform float uSoften;    // colour taken on per pass regardless of load
+
+// How fast colour crosses into a tool too full to take any more paint. This
+// lives in TRANSFER, not in COVERAGE: PICKUP_FRAG does not include COVERAGE,
+// and putting it there cost a round of "why will the app not boot" -- a GLSL
+// compile failure surfaces as window.studio never appearing, which looks
+// nothing like a missing #define.
+#define PALETTE_SWAP 0.5
 
 // A light touch only meets the top of what is already there, which is how you
 // lay paint onto a thickly covered canvas without dragging up everything
@@ -545,7 +549,7 @@ void main() {
   // symmetric and stays put.
   float avail = clamp(paint.a / max(uSoak, 1e-4), 0.0, 1.0);
   float sealed = mix(tipFilm(res.a), res.a, uPalette);
-  float swap = uPalette * uPickup * uDeplete * contact * lay * avail * sealed;
+  float swap = PALETTE_SWAP * uPalette * uPickup * uDeplete * contact * lay * avail * sealed;
   weight = clamp(weight + swap * (1.0 - weight), 0.0, 1.0);
 
   vec3 colour = res.rgb;
@@ -670,17 +674,9 @@ void main() {
   float give = giveVolume(lay, contact, res.a);
   float take = takeVolume(lay, contact, paint.a, wet, res.a);
 
-  // A palette gives paint up, like anything else a loaded tool is dragged
-  // across. Pinning it -- take = 0 on the board, and the volume floor below --
-  // was meant to stop a mixture you had made from being carried off before you
-  // could reload from it, but it also meant nothing could ever be pulled OUT
-  // of a pile: you dragged a brush through ultramarine and the pile sat there
-  // untouched, with no streak behind it. Pulling a colour out of the pile and
-  // drawing it into the open board is the basic gesture of mixing; without it
-  // the piles may as well be buttons. What actually protects a mixture is that
-  // the piles are DEEP -- takeLoad already caps one pass at 45% of the film it
-  // crosses, so a pile survives many strokes -- not that they are immortal.
-  take *= mix(1.0, PALETTE_GIVE_UP, uPalette);
+  // The palette gives paint up freely -- that is how a streak gets pulled out
+  // of a pile and how the brush loads. What it does NOT do is get smaller for
+  // it. See the volume floor below.
 
   float remain = max(paint.a - take, 0.0);
   float colourGive = give * (1.0 - uClearMix);
@@ -706,10 +702,24 @@ void main() {
   // uMaxVolume is how much paint a MARK can hold -- a property of the tool
   // making it. A pile squeezed from a tube is deeper than any mark, so capping
   // it at the tool's figure snapped a fresh pile from 5 layers down to 1.9 the
-  // instant a brush first touched it. That went unnoticed while the palette
-  // had a volume floor holding it back up; taking the floor away exposed it.
+  // instant a brush first touched it.
   float ceiling = max(uMaxVolume, uPalette * PALETTE_MAX_VOLUME);
   float volume = clamp(remain + give, 0.0, ceiling);
+
+  // A palette does not run out. This is a simulation, and having to squeeze
+  // more paint because you used some buys nothing: nobody is short of cadmium
+  // yellow here, and being made to re-stock mid-mixture is pure friction in
+  // the one place the tool is supposed to feel generous. So the board keeps
+  // whatever depth it had -- the tube pile is bottomless, and a mixture you
+  // worked up stays there to reload from as long as you want it.
+  //
+  // This floor is only about DEPTH. Paint still transfers in both directions
+  // above it: the brush loads from a pile, a streak still pulls out of one, a
+  // mixture still moves as you work it, and the colour here still changes.
+  // The pile simply does not shrink while it happens. Taking the floor away
+  // to make streaks work was the wrong lever -- streaks come from give and
+  // from pickup, neither of which this touches.
+  if (uPalette > 0.5) volume = max(volume, paint.a);
 
   float height = surf.r - take * 0.9 + give * uBody * 0.85 * (0.78 + 0.38 * bristle);
   height = mix(height, height * 0.35, uLevel * contact);
