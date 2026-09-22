@@ -919,6 +919,22 @@ body {
   .topbar::-webkit-scrollbar {
     display: none;
   }
+  /* The bar scrolls sideways on a narrow screen, and Save and Lessons start
+     off the right-hand end of it. Scrolling works -- swiping the bar reaches
+     them -- but with the scrollbar hidden there is nothing to say they are
+     there, so on a phone the app looks as though it cannot save your painting.
+     A sticky pseudo-element rides the right edge and fades the content under
+     it, which is the usual way of saying "there is more this way". */
+  .topbar::after {
+    content: '';
+    position: sticky;
+    right: 0;
+    flex: 0 0 30px;
+    margin-left: -30px;
+    align-self: stretch;
+    pointer-events: none;
+    background: linear-gradient(to left, var(--p1) 25%, transparent);
+  }
   /* A palette is naturally held low, and a bottom sheet is thumb-reachable. */
   .side {
     position: absolute;
