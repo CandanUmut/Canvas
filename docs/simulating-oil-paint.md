@@ -451,33 +451,63 @@ we shipped and the measurement that caught it.
 | 4 | Tip film used as "room" on the palette | Loading capped at 6%; mixtures came off near-black (`#162933` for `#6294a5`) | Mix calibration: measured swatch vs. intended |
 | 5 | Unidirectionality applied to the palette | Palette became pickup-only; could not mix at all | A user. Then a scripted pointer-event reproduction |
 | 6 | Colour decoupling disabled where the tool is full | A full brush sealed shut; only ever paints the last colour clicked | Probe: drag a loaded brush through a contrasting pile, sample what it lays |
-| 7 | Palette piles could not be depleted | Every mixture in the app drifted toward whichever pile was largest | Mix calibration: intended hex vs. measured, before and after |
+| 7 | Colour exchange over-counted whatever the brush crossed while full | Every mixture in the app drifted toward whichever pigment was crossed last | Mix calibration: intended hex vs. measured, swept over the exchange rate |
 
 Bug 7 deserves its own note, because it was the one with the widest blast
-radius and the one we were least likely to find by looking.
+radius, and because our first fix for it was wrong in an instructive way.
 
-We had pinned the palette so that a pile never lost paint — `take = 0`, plus a
-floor under the volume — reasoning that a mixture you had made needed to stay
-put so you could reload from it. The visible symptom was that you could not
-pull a streak out of a pile. The *invisible* symptom was much worse: **a pile
-that cannot be depleted cannot honour a ratio.** Ask for forty parts white to
-one of ochre, and the white pile is still forty parts white however much you
-take out of it, so the mixture keeps drifting toward whichever pile is
-biggest. Every mixture in the application was wrong, and wrong in the same
-direction — far too light.
+We had pinned the palette so a pile never lost paint — `take = 0`, plus a floor
+under the volume. The visible symptom was that nothing could be pulled *out* of
+a pile. The invisible one was that every mixture in the application came out far
+too light, and consistently so.
 
-Measured against the hexes the paintings were written to produce:
+We removed the floor, and both symptoms went away. Mixture error against the
+values the paintings are written to fell from 277 to 51, summed over channels.
+We wrote it up as "a pile that cannot be depleted cannot honour a ratio", which
+is a tidy explanation, and we shipped it.
 
-| mixture | intended | pinned piles | piles that deplete |
-|---|---|---|---|
-| warm sky | `#bbaa96` | `#dad7ce` | `#a79e91` |
-| bank sand | `#b9ab96` | `#dedcd1` | `#b2ac9c` |
+**It was the wrong lever, and the explanation was wrong too.** A painter using
+the tool reported the obvious consequence immediately: the paint now ran out,
+and they had to keep squeezing more. Which in a simulation buys nothing — nobody
+here is short of cadmium yellow, and being made to re-stock mid-mixture is pure
+friction in the one place the tool should feel generous. Baxter's dissertation
+says as much: the palette is a source that refills the brush and never runs out.
 
-Summed absolute channel error, 277 → 51. Nobody noticed for weeks, because
-every mixture was wrong *consistently*, so the paintings looked coherent — just
-chalky. A systematic error that preserves internal consistency is close to
-invisible to the eye and trivial for a two-line calibration harness. That
-asymmetry is the argument for §6 in one example.
+Going back with a probe instead of an argument: the ratio does not come from
+depletion at all. Our mixing routine lays each pigment as a band whose *width*
+is its share and drags a brush across the strip, so the ratio comes from how far
+a bristle travels over each pigment. Depletion was never the mechanism. What had
+actually been distorting the ratio was the colour-exchange term from §3.2 — the
+brush fills up on the wide white band first, then crosses the narrow dark bands
+while *full*, which is precisely when that term is strongest. The darks were
+being counted twice.
+
+Calibrating that term instead, against the same two mixtures, with the piles
+bottomless:
+
+| exchange rate | summed channel error |
+|---|---|
+| 0.00 | 277 (the original bug — far too light) |
+| 0.25 | 153 |
+| **0.50** | **43** |
+| 1.00 | 192 (too dark) |
+
+A real optimum rather than a fudge: too little and the brush cannot pick the
+darks up at all, too much and they swamp the white. It also beats the
+depleting-pile version we had shipped, which measured 51 — so the right fix was
+better than the wrong one on the wrong fix's own metric, while removing the
+symptom the wrong one introduced.
+
+Two lessons, and the second is the one we would keep:
+
+- A measurement that improves is not proof that the mechanism you believe in is
+  the one that moved it. 277 → 51 was real, and our account of *why* was wrong.
+  We had changed two things — depletion and a volume ceiling — and measured only
+  the sum, then narrated a cause for it.
+- **The symptom a user reports is evidence about the model, not just about the
+  UI.** "The paint runs out too fast" was not a complaint about convenience. It
+  was a correct observation that the palette had been given a property a palette
+  should not have, and chasing it led to the actual defect.
 
 Bugs 4, 5, 6 and 7 are all the same underlying mistake: **treating the palette as
 a canvas**. Every rule tuned for making a mark on a painting was applied, by
