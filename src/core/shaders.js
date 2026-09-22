@@ -276,6 +276,12 @@ vec3 mixPaint(vec3 a, float ta, vec3 b, float tb, float w) {
 const COVERAGE = /* glsl */ `
 uniform float uOpacity;   // 0 = pure glaze, 1 = buries what is underneath
 
+// How deep the wet paint a fresh mark actually mixes into. Oil paint blends at
+// the surface the brush meets, not through the full body of everything laid
+// before it, and a layer is defined here as "fully covering" -- so the film
+// that takes part is a good fraction of one.
+#define MIX_FILM 0.55
+
 // "under" is how much paint is already there. A thin film cannot bury a
 // thick pile -- without that term one pass of a white brush turned a pile of
 // Phthalo Blue on the palette 88% white, so mixing ran backwards.
@@ -630,12 +636,22 @@ void main() {
   float remain = max(paint.a - take, 0.0);
   float colourGive = give * (1.0 - uClearMix);
 
+  // Paint laid on wet paint mixes at the INTERFACE, not through the whole
+  // depth of what is already there. Weighing a dab against the entire
+  // accumulated volume meant the more paint a canvas carried, the less any
+  // further mark could say: a fan brush tapped onto a sky that had been worked
+  // to a layer and a half moved it a seventh of the way to the colour on the
+  // bristles, so a tree went on as a translucent haze with the sky showing
+  // through it, however many times it was tapped. Bob's trees go on dark in
+  // one or two touches, because the paint on the bristles sits ON the sky --
+  // it does not homogenise with every coat underneath.
+  float film = min(remain, MIX_FILM);
   vec3 colour = paint.rgb;
   if (colourGive > 0.00001) {
     colour = (remain <= 0.0005)
       ? res.rgb
-      : mixPaint(paint.rgb, uCanvasTint, res.rgb, uBrushTint, colourGive / (remain + colourGive));
-    colour = mix(colour, res.rgb, hidingPower(colourGive, remain, surf.g));
+      : mixPaint(paint.rgb, uCanvasTint, res.rgb, uBrushTint, colourGive / (film + colourGive));
+    colour = mix(colour, res.rgb, hidingPower(colourGive, film, surf.g));
   }
 
   float volume = clamp(remain + give, 0.0, uMaxVolume);
