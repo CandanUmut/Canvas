@@ -361,30 +361,49 @@ function evergreen(x, baseY, topY, width, size) {
   s.stroke([[x, topY + 6], [x + jit(3), baseY]], { step: 4 });
   s.set({ thinner: 0 });
 
+  // A fir is a MASS, not a lattice. Tapped on a grid with air between the
+  // marks it stays a haze of separate touches with sky showing through, however
+  // good each touch is; tapped close enough that they merge it becomes a solid
+  // dark, which is what a fir is. The underside of a bough is nearly black.
   s.tool('brush-fan', size);
-  const rows = Math.max(7, Math.round((baseY - topY) / (size * 30)));
-  // Twice over. One touch of a fan brush moves wet paint about a third of the
-  // way to the colour on it, so a single pass leaves a grey tree.
-  for (let pass = 0; pass < 2; pass++) {
+  const rows = Math.max(12, Math.round((baseY - topY) / (size * 17)));
+  for (let pass = 0; pass < 3; pass++) {
     for (let i = 0; i < rows; i++) {
       const t = i / (rows - 1);
-      const y = topY + (baseY - topY) * t;
-      const half = 4 + width * Math.pow(t, 1.4) * 0.5;
-      const n = Math.round(half / (size * 26));
-      s.set({ angle: 0 });
-      s.tap([x + jit(2), y]);
+      const y = topY + (baseY - topY) * t + jit(size * 8);
+      const half = 4 + width * Math.pow(t, 1.45) * 0.5;
+      const n = Math.max(1, Math.round(half / (size * 34)));
+      s.set({ angle: jit(12) });
+      s.tap([x + jit(4), y]);
       for (let j = 1; j <= n; j++) {
-        const off = (half * j) / n;
-        const droop = off * 0.3;
-        s.set({ angle: -22 });
-        s.tap([x - off + jit(3), y + droop + jit(3)]);
-        s.set({ angle: 22 });
-        s.tap([x + off + jit(3), y + droop + jit(3)]);
+        const off = (half * j) / n * (0.82 + rnd() * 0.3);
+        const droop = off * 0.32;
+        s.set({ angle: -22 + jit(16) });
+        s.tap([x - off + jit(6), y + droop + jit(6)]);
+        s.set({ angle: 22 + jit(16) });
+        s.tap([x + off + jit(6), y + droop + jit(6)]);
       }
     }
   }
   s.set({ angle: 0 });
 }
+
+/** The light that catches the top edge of a bough, once the mass is down. */
+function boughLight(x, baseY, topY, width, size, n) {
+  s.tool('brush-fan', size * 0.75);
+  s.set({ pressure: 0.4 });
+  for (let i = 0; i < n; i++) {
+    const t = 0.15 + rnd() * 0.85;
+    const y = topY + (baseY - topY) * t;
+    const half = 4 + width * Math.pow(t, 1.45) * 0.5;
+    const side = rnd() < 0.5 ? -1 : 1;
+    const off = half * (0.45 + rnd() * 0.55);
+    s.set({ angle: side * 24 + jit(14) });
+    s.tap([x + side * off + jit(5), y + off * 0.3 - size * 9 + jit(5)]);
+  }
+  s.set({ angle: 0 });
+}
+
 s.set({ pressure: 0.6 });
 for (const [x, base, top, w, sz] of [
   [300, 812, 556, 86, 0.5], [352, 820, 640, 56, 0.36], [430, 818, 628, 62, 0.4],
@@ -392,6 +411,13 @@ for (const [x, base, top, w, sz] of [
   [896, 828, 686, 54, 0.36], [952, 824, 722, 40, 0.28], [1108, 816, 592, 74, 0.46],
 ]) {
   evergreen(x, base, top, w, sz);
+}
+mixFor([['sap-green', 3], ['cadmium-yellow', 3], ['titanium-white', 1]], 'brush-fan', 0.4);
+for (const [x, base, top, w, sz] of [
+  [300, 812, 556, 86, 0.5], [430, 818, 628, 62, 0.4], [896, 828, 686, 54, 0.36],
+  [1108, 816, 592, 74, 0.46],
+]) {
+  boughLight(x, base, top, w, sz, 14);
 }
 await stage('mid-trees');
 
@@ -562,13 +588,12 @@ for (const [x, base, top, w, sz] of [
   evergreen(x, base, top, w, sz);
 }
 // A little light on the near edge of the nearest boughs.
-mixFor([['sap-green', 3], ['cadmium-yellow', 2], ['midnight-black', 1]], 'brush-fan', 0.4);
-s.tool('brush-fan', 0.4).set({ pressure: 0.4 });
-for (let i = 0; i < 46; i++) {
-  const left = rnd() < 0.5;
-  const x = left ? 40 + rnd() * 170 : 1190 + rnd() * 220;
-  const y = 300 + rnd() * 540;
-  s.tap([x, y]);
+mixFor([['sap-green', 3], ['cadmium-yellow', 3], ['titanium-white', 1]], 'brush-fan', 0.4);
+for (const [x, base, top, w, sz] of [
+  [116, 860, 130, 168, 0.8], [36, 916, 250, 140, 0.7], [196, 884, 338, 120, 0.6],
+  [1272, 870, 334, 150, 0.72], [1368, 902, 396, 126, 0.64], [1180, 892, 430, 104, 0.54],
+]) {
+  boughLight(x, base, top, w, sz, 26);
 }
 await stage('framing-trees');
 
