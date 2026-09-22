@@ -1058,3 +1058,17 @@ body {
     padding-bottom: 14px;
   }
 }
+
+/* The dropper's cursor. It points at one pixel rather than covering an area,
+   so it is a crosshair at a fixed size, not a footprint that tracks the size
+   slider. The base .brush-cursor sets a border and an outline, which would
+   draw a box around the crosshair, so both are cleared here. */
+.brush-cursor.picking {
+  border: 0;
+  outline: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(#fff, #fff) center / 1.5px 100% no-repeat,
+    linear-gradient(#fff, #fff) center / 100% 1.5px no-repeat;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));
+}

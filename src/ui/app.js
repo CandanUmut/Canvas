@@ -347,6 +347,42 @@ function toolPreview(tool) {
   m.width = m.height = MASK_RES;
   const mc = m.getContext('2d');
   const img = mc.createImageData(MASK_RES, MASK_RES);
+  // The dropper has no footprint worth showing -- its mask is a placeholder --
+  // so draw the thing itself. A round blob in the rail would read as just
+  // another small brush, which is the one thing it must not look like.
+  if (tool.pick) {
+    // Centred in the 132x60 cell the other previews are drawn into.
+    const ink = '#e2ddd2';
+    ctx.save();
+    ctx.translate(66, 30);
+    ctx.strokeStyle = ink;
+    ctx.fillStyle = ink;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Barrel, running up to the right at 45 degrees.
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(-8, 8);
+    ctx.lineTo(9, -9);
+    ctx.stroke();
+    // The squeeze bulb on the end of it.
+    ctx.beginPath();
+    ctx.arc(15, -15, 7.5, 0, Math.PI * 2);
+    ctx.fill();
+    // The tip, and the drop coming off it.
+    ctx.beginPath();
+    ctx.moveTo(-9, 7);
+    ctx.lineTo(-19, 17);
+    ctx.lineTo(-13, 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-23, 22, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return c;
+  }
+
   const isKnife = tool.category === 'knife';
   for (let i = 0; i < tool.mask.length; i++) {
     img.data[i * 4] = isKnife ? 196 : 226;
@@ -404,7 +440,52 @@ function buildToolRail() {
   }
 }
 
+// What the dropper does, wherever it is pointed. Shared by the picker tool and
+// by alt-click, so the two can never drift apart.
+//
+// It reads the PAINT, not the pixel on screen. The rendered pixel has the
+// canvas light, the impasto shading and the squint filter baked into it, so
+// picking that and painting with it would drift a little darker or lighter
+// every time you went round the loop. What comes back here is the pigment
+// that is actually on the canvas.
+function pickColourAt(surface, pt, { palette = false } = {}) {
+  const s = engine.samplePaint(surface, pt.x, pt.y);
+  const bare = s.volume <= 0.01;
+  // Bare ground is a real answer -- the tone of the canvas is a colour you
+  // legitimately want to mix back into a painting -- but samplePaint reports
+  // it as black, which is not it. Reach for the gesso instead of handing back
+  // a colour nobody put there.
+  const colour = bare ? (surface.gesso || [0.97, 0.96, 0.94]).slice() : s.colour;
+
+  engine.loadBrush(colour, 1.0, 1, true, 0.85);
+  engine.setStock(colour, 1.0, 0.85);
+  updateBrushState({ colour, load: 1 });
+
+  const where = palette ? 'the palette' : 'the canvas';
+  toast(bare
+    ? `Nothing painted there yet -- picked up the bare ${palette ? 'board' : 'canvas'}, ${rgbToHex(colour)}.`
+    : `Picked up ${rgbToHex(colour)} off ${where}.`);
+
+  // Hand the brush back afterwards. You reach for the dropper to carry on
+  // painting, not to stand there holding it, and having to re-select the
+  // brush every single time is the kind of small tax that makes a tool
+  // tiring. Alt-click never changed the tool, so there is nothing to give
+  // back in that case.
+  if (TOOLS_BY_ID[state.toolId].pick && pickReturnsTo && pickReturnsTo !== state.toolId) {
+    selectTool(pickReturnsTo);
+  }
+  needsRender = true;
+}
+
+// The tool to go back to once a colour has been picked.
+let pickReturnsTo = null;
+
 function selectTool(id) {
+  if (TOOLS_BY_ID[id] && TOOLS_BY_ID[id].pick) {
+    // Only remember a tool you could actually paint with, or picking twice in
+    // a row would hand you the dropper back.
+    if (!TOOLS_BY_ID[state.toolId].pick) pickReturnsTo = state.toolId;
+  }
   state.toolId = id;
   const tool = TOOLS_BY_ID[id];
   engine.setTool(tool);
@@ -856,6 +937,19 @@ function drawCursor(el, host, zoom, at = cursorAt) {
     el.hidden = true;
     return;
   }
+  // A dropper does not have a size, so it must not draw a footprint ring that
+  // grows and shrinks with the size slider. It points at one pixel.
+  if (tool.pick) {
+    el.hidden = false;
+    el.classList.remove('round');
+    el.classList.add('picking');
+    el.style.width = '18px';
+    el.style.height = '18px';
+    el.style.transform = `translate(${at.x - rect.left - 9}px, ${at.y - rect.top - 9}px)`;
+    return;
+  }
+  el.classList.remove('picking');
+
   const w = toolSizePx() * zoom;
   const h = w * tool.aspect;
   const angle = tool.followStroke ? strokeAngleDeg : state.angle;
@@ -931,15 +1025,8 @@ function wirePointer(el, getSurface, { palette }) {
     const surface = getSurface();
     const pt = surfacePoint(ev, el, surface);
 
-    if (ev.altKey) {
-      // Eyedropper: pick the paint right off the canvas.
-      const s = engine.samplePaint(surface, pt.x, pt.y);
-      if (s.volume > 0.01) {
-        engine.loadBrush(s.colour, 1.0, 1, true, 0.85);
-        engine.setStock(s.colour, 1.0, 0.85);
-        updateBrushState({ colour: s.colour, load: 1 });
-        toast(`Picked up ${rgbToHex(s.colour)} off the canvas.`);
-      }
+    if (ev.altKey || TOOLS_BY_ID[state.toolId].pick) {
+      pickColourAt(surface, pt, { palette });
       return;
     }
 
@@ -1470,6 +1557,10 @@ function wireKeyboard() {
       case 'c':
       case 'C':
         $('btn-clean-brush').click();
+        break;
+      case 'i':
+      case 'I':
+        selectTool('util-picker');
         break;
       case 'D':
         $('btn-dry').click();

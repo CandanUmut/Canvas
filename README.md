@@ -119,6 +119,15 @@ Pressure comes from a stylus if you have one; with a mouse or finger the
 **Pressure** slider does the same job, and it is the control that turns a
 covering stroke into a broken dry-brush highlight.
 
+The **Picker** in the Utility group takes a colour straight off the painting
+and loads the brush with it. It reads the PAINT rather than the pixel you see
+-- the rendered pixel has the canvas light, the impasto shading and the squint
+filter baked into it, so picking that and painting with it would drift a little
+further off every time round the loop. Point it at bare canvas and it hands you
+the ground tone, which is a colour worth having. It gives the brush back
+afterwards, so you can pick and carry straight on painting. Alt-click does the
+same thing without putting your brush down, and `i` reaches for it.
+
 ### Keyboard
 
 | | |
