@@ -279,6 +279,8 @@ export class Engine {
       uBristleOfs: d.bristleOfs || [0, 0],
       uBristleCut: d.bristleCut || 0,
       uBristleBias: tool.bristleBias ?? 0.25,
+      uBristleSplay: tool.splay ?? 0,
+      uSeed: d.seed ?? 0,
       uWeaveScale: surface.weaveScale ?? this.view.weaveScale,
       uWeaveDepth: surface.weaveDepth ?? this.view.weaveDepth,
       uDeplete: d.deplete,

@@ -40,6 +40,9 @@ export class StrokeRunner {
     if (!force && this.bristles && this.sinceRoll < 0.8) return this.bristles;
     this.sinceRoll = 0;
     this.bristles = {
+      // One number per contact. The bundle rearranges when you set the tool
+      // down, and holds its arrangement while it travels.
+      seed: Math.random() * 64.0,
       cut: Math.random() * (t.cut ?? 0),
       ofs: [
         (Math.random() - 0.5) * (t.jitter ?? 0),
@@ -221,6 +224,7 @@ export class StrokeRunner {
       moving,
       bristleCut: bristles.cut,
       bristleOfs: bristles.ofs,
+      seed: bristles.seed,
       flow: t.flow * settings.flowScale * press * (1 + thinner * 0.4),
       pickup: t.pickup * settings.blendScale,
       soften: t.soften * settings.blendScale,

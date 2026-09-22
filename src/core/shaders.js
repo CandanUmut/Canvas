@@ -39,6 +39,8 @@ uniform float uWeaveDepth;   // how toothy the canvas is
 uniform vec2  uBristleOfs;   // per-dab shift of the bristle pattern
 uniform float uBristleCut;   // per-dab: how many bristles fail to catch
 uniform float uBristleBias;  // how much the streaks drive coverage, 0..1
+uniform float uBristleSplay; // how far the bundle rearranges per contact
+uniform float uSeed;         // one number per contact, held while it lasts
 
 // Not every bristle picks up and lays down paint on every touch. Some are
 // short of paint, some skip the surface entirely. Cutting a random share of
@@ -61,8 +63,54 @@ float layAmount(float cover, float bristle) {
 // the mask at exactly the same offset every dab made each pass re-imprint the
 // identical ribs, so repeated strokes stacked into hard corduroy and crossing
 // strokes made a plaid.
+// Where this point of the footprint reads from the tool's picture of itself.
+//
+// The picture is rasterised ONCE per tool, so without this every touch of a
+// fan brush stamps the identical splay -- measured, one mark correlated 0.95
+// with the next, and a knife 0.997 -- and a tree built out of them comes out
+// as wallpaper. Real bristles do not do that. They are a loose bundle: press
+// them down and they splay, clumps merge and separate, some bend away, some
+// are short of paint. Set the same brush down twice and you get two different
+// shapes.
+//
+// So the picture is re-arranged as it is read, per contact, by a seed that
+// holds for as long as the tool is touching:
+//
+//   splay   the whole bundle spreads or gathers, more at the tips than at
+//           the ferrule, which is what a brush does under pressure
+//   comb    clumps slide sideways by different amounts, so they merge and
+//           part differently every time
+//   reach   clumps end at different lengths, so the silhouette is ragged
+//
+// Steel does none of this, so a knife passes uBristleSplay = 0 and reads its
+// own picture straight.
+float clumpNoise(float x, float seed) {
+  float i = floor(x);
+  float f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = fract(sin((i + seed) * 127.1) * 43758.5453);
+  float b = fract(sin((i + 1.0 + seed) * 127.1) * 43758.5453);
+  return mix(a, b, f) - 0.5;
+}
+
 vec2 bristleUV(vec2 b) {
-  return b + uBristleOfs;
+  vec2 uv = b + uBristleOfs;
+  if (uBristleSplay <= 0.0001) return uv;
+
+  // Along the hairs: 0 at the ferrule, 1 at the tips. The bundle is held at
+  // one end, so the far end moves and the held end does not.
+  float along = clamp(uv.y, 0.0, 1.0);
+  float lever = along * along;
+
+  float t = uv.x - 0.5;
+  // Splay: the whole bundle opens or closes about its middle.
+  float splay = 1.0 + uBristleSplay * 0.55 * clumpNoise(uSeed * 0.37, 3.0) * lever;
+  // Comb: neighbouring clumps slide by different amounts and merge.
+  float comb = uBristleSplay * 0.22 * clumpNoise(t * 5.0 + uSeed, 11.0) * lever;
+  // Reach: clumps end short or long, so the tips are never the same line.
+  float reach = 1.0 + uBristleSplay * 0.30 * clumpNoise(t * 4.0 + uSeed * 1.7, 29.0);
+
+  return vec2(0.5 + t * splay + comb, uv.y * reach);
 }
 
 vec2 brushToCanvas(vec2 b) {          // b in 0..1 brush space -> canvas pixels
