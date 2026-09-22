@@ -368,9 +368,6 @@ float tipFilm(float load) {
 }
 
 float layShare(float load) {
-  // A palette is a source, not a surface being painted: a tool put into a pile
-  // fills from it however much it is already carrying.
-  if (uPalette > 0.5) return 0.0;
   return smoothstep(uKnee * 0.5, uKnee * 1.5, tipFilm(load));
 }
 
@@ -398,8 +395,16 @@ float takeLoad(float contact, float volume, float wetness, float load) {
   // it crossed first swamped the mixture and every colour came off the board
   // nearly black.
   float room = 1.0 - mix(tipFilm(load), load, uPalette);
-  float amt = uPickup * uDeplete * contact * avail * wetness * room
-            * (1.0 - layShare(load));
+
+  // One-way transfer is a rule about a PAINTING, where a tool laying paint
+  // must not scrub at the same time. A palette is not a painting: a pile
+  // always gives, whether or not the tool is also laying paint down, and the
+  // tool must be able to lay paint down or there is nowhere to mix. Gating
+  // the board by the same rule made it pickup-only -- you could load a single
+  // pigment off a pile and nothing else, and dragging two colours together
+  // left the board untouched, because the brush could not put anything on it.
+  float oneWay = mix(1.0 - layShare(load), 1.0, uPalette);
+  float amt = uPickup * uDeplete * contact * avail * wetness * room * oneWay;
   // A pass can lift at most this share of the film it crosses. A dry brush
   // dragged over wet paint takes some of it up; it does not take nearly all
   // of it, and letting it meant a tool that had run out left a track scraped
