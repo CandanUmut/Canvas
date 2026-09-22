@@ -919,6 +919,22 @@ body {
   .topbar::-webkit-scrollbar {
     display: none;
   }
+  /* The bar scrolls sideways on a narrow screen, and Save and Lessons start
+     off the right-hand end of it. Scrolling works -- swiping the bar reaches
+     them -- but with the scrollbar hidden there is nothing to say they are
+     there, so on a phone the app looks as though it cannot save your painting.
+     A sticky pseudo-element rides the right edge and fades the content under
+     it, which is the usual way of saying "there is more this way". */
+  .topbar::after {
+    content: '';
+    position: sticky;
+    right: 0;
+    flex: 0 0 30px;
+    margin-left: -30px;
+    align-self: stretch;
+    pointer-events: none;
+    background: linear-gradient(to left, var(--p1) 25%, transparent);
+  }
   /* A palette is naturally held low, and a bottom sheet is thumb-reachable. */
   .side {
     position: absolute;
@@ -965,4 +981,80 @@ body {
 @keyframes pulse {
   0%, 100% { opacity: 0.25; }
   50% { opacity: 1; }
+}
+
+/* ------------------------------------------------ what is on the bristles */
+
+/* A picture of the bed, not a flat swatch: a tool can carry two colours and
+   you cannot use that if you cannot see it. */
+.current-dab {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(45deg, #2a2a2c 25%, transparent 25%, transparent 75%, #2a2a2c 75%) 0 0 / 8px 8px,
+    linear-gradient(45deg, #2a2a2c 25%, #323234 25%, #323234 75%, #2a2a2c 75%) 4px 4px / 8px 8px;
+  flex: none;
+  image-rendering: auto;
+}
+
+.dip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 10px;
+}
+.dip-choices {
+  display: flex;
+  gap: 3px;
+  background: var(--p0);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 2px;
+}
+.dip {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--t2);
+  font: 500 11px/1 var(--ui);
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.dip:hover {
+  color: var(--t1);
+}
+.dip[aria-pressed='true'] {
+  background: var(--p2);
+  color: var(--t1);
+}
+
+/* ------------------------------------------------- reaching the palette */
+
+/* On a phone the top bar scrolls, and a button you have to scroll to find is a
+   button that does not exist. The palette is the one thing you cannot paint
+   without, so it gets a thumb-reachable place of its own. */
+@media (max-width: 900px) {
+  .btn.narrow-only#btn-panels {
+    position: fixed;
+    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    z-index: 30;
+    padding: 12px 18px;
+    border-radius: 24px;
+    font-weight: 600;
+    background: var(--accent, #c8743a);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.45);
+  }
+  .side.open ~ .stage .btn.narrow-only#btn-panels,
+  body:has(.side.open) .btn.narrow-only#btn-panels {
+    bottom: calc(62vh + 14px);
+  }
+  .dip-row {
+    padding-bottom: 14px;
+  }
 }

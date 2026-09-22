@@ -112,7 +112,7 @@ export class Engine {
     // canvas. Reloading has to come from stock: refilling from the drifted
     // colour meant a brush that ran dry over Liquid White came back loaded with
     // white, and every stroke after the first painted white on white.
-    this.brush = { colour: [1, 1, 1], tint: 1, opacity: 1, load: 0, dirty: false };
+    this.brush = { colour: [1, 1, 1], tint: 1, opacity: 1, load: 0, dirty: false, twoTone: false };
     this.brush.stock = { colour: [1, 1, 1], tint: 1, opacity: 1 };
 
     this.maskTextures = new Map();
@@ -203,8 +203,10 @@ export class Engine {
       this.brush.tint = tint;
       this.brush.opacity = opacity;
       this.brush.load = Math.min(load, 1);
+      this.brush.twoTone = false;
     } else {
       this.brush.load = Math.max(this.brush.load, Math.min(load, 1));
+      this.brush.twoTone = true;
     }
     this.brush.dirty = false;
   }
@@ -225,6 +227,7 @@ export class Engine {
     this.loadBrush([0.97, 0.96, 0.94], 1, 0, true, 1);
     this.brush.load = 0;
     this.brush.dirty = false;
+    this.brush.twoTone = false;
     // A brush you have beaten the devil out of is EMPTY, and has to stay empty
     // until you dip it again. Leaving the charged colour behind meant the next
     // stroke's reload filled it straight back up, so cleaning it did nothing at
@@ -252,6 +255,10 @@ export class Engine {
     // on the load running down meant a big tool -- whose load barely moves --
     // never got its colour back, so one stroke turned it to whatever it had
     // been dragged through and it stayed that way.
+    // A tool deliberately carrying two colours must not be flattened back to
+    // one by the next stroke's top-up. That load is the whole point of dipping
+    // a corner, and it took work to make.
+    if (b.twoTone) return false;
     const s = b.stock;
     // `dirty` is set by the first dab of any stroke, so it says "this tool has
     // been used since it was last filled" without reading anything back off
@@ -806,6 +813,60 @@ export class Engine {
       flipped.set(pixels.subarray((h - 1 - y) * rowBytes, (h - y) * rowBytes), y * rowBytes);
     }
     return new ImageData(flipped, w, h);
+  }
+
+  /**
+   * A picture of the bristle bed as it is right now, for the swatch in the
+   * corner. A single flat colour cannot show a tool carrying two -- dark on
+   * one corner of a fan brush and the highlight on the other -- and if you
+   * cannot see it you cannot use it.
+   *
+   * Call sampleReservoir first; this re-uses the buffer it read back.
+   */
+  reservoirImage(out = 48) {
+    const res = this.reservoir.a;
+    const n = res.width;
+    const buf = this._resBuf;
+    if (!buf) return null;
+    const mask = this.tool ? this.tool.mask : null;
+    const px = new Uint8ClampedArray(out * out * 4);
+    const mscale = MASK_RES / n;
+    for (let y = 0; y < out; y++) {
+      for (let x = 0; x < out; x++) {
+        const sx = Math.min(n - 1, ((x / out) * n) | 0);
+        const sy = Math.min(n - 1, ((y / out) * n) | 0);
+        const i = (n - 1 - sy) * n + sx;      // reservoir is bottom-up
+        let bristle = 1;
+        if (mask) {
+          const mx = Math.min(MASK_RES - 1, (sx * mscale) | 0);
+          const my = Math.min(MASK_RES - 1, (sy * mscale) | 0);
+          bristle = mask[(my * MASK_RES + mx) * 2 + 1] / 255;
+        }
+        const o = (y * out + x) * 4;
+        px[o] = Math.round(Math.min(1, Math.max(0, buf[i * 4])) * 255);
+        px[o + 1] = Math.round(Math.min(1, Math.max(0, buf[i * 4 + 1])) * 255);
+        px[o + 2] = Math.round(Math.min(1, Math.max(0, buf[i * 4 + 2])) * 255);
+        px[o + 3] = Math.round(Math.min(1, buf[i * 4 + 3] * 1.6) * bristle * 255);
+      }
+    }
+    return { data: px, size: out };
+  }
+
+  /** True when the bed is carrying more than one colour. */
+  reservoirIsTwoTone() {
+    const buf = this._resBuf;
+    if (!buf) return false;
+    const n = this.reservoir.a.width;
+    let minR = 2, maxR = -1, minG = 2, maxG = -1, minB = 2, maxB = -1;
+    for (let i = 0; i < n * n; i++) {
+      if (buf[i * 4 + 3] < 0.08) continue;
+      const r = buf[i * 4], g = buf[i * 4 + 1], b = buf[i * 4 + 2];
+      if (r < minR) minR = r; if (r > maxR) maxR = r;
+      if (g < minG) minG = g; if (g > maxG) maxG = g;
+      if (b < minB) minB = b; if (b > maxB) maxB = b;
+    }
+    if (maxR < 0) return false;
+    return (maxR - minR) + (maxG - minG) + (maxB - minB) > 0.22;
   }
 
   /**

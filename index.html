@@ -97,12 +97,25 @@
         </div>
 
         <div class="brush-row">
-          <span class="current-dab" id="brush-chip" title="What is on the brush right now"></span>
+          <canvas class="current-dab" id="brush-chip" width="48" height="48"
+                  title="What is on the bristles right now"></canvas>
           <div class="load">
             <div class="load-bar"><i id="load-fill"></i></div>
             <span class="load-text" id="load-text">empty</span>
           </div>
           <button class="btn small" id="btn-clean-brush" title="Beat the devil out of it (C)">Clean</button>
+        </div>
+
+        <!-- Which part of the bristles goes into the paint. Dipping a corner is
+             how one touch lays a bough and its highlight together. -->
+        <div class="dip-row" id="dip-row">
+          <span class="field-label">Dip</span>
+          <div class="dip-choices" role="group" aria-label="Which part of the brush to dip">
+            <button class="dip" data-dip="all" aria-pressed="true" title="The whole brush">Whole</button>
+            <button class="dip" data-dip="left" aria-pressed="false" title="Only the left side">Left</button>
+            <button class="dip" data-dip="right" aria-pressed="false" title="Only the right side">Right</button>
+            <button class="dip" data-dip="tip" aria-pressed="false" title="Only the working edge">Edge</button>
+          </div>
         </div>
 
         <section class="block">

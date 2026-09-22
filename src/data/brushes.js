@@ -609,6 +609,11 @@ export const TOOLS = [
   }),
   tool({
     id: 'knife-10',
+    // A knife is loaded by drawing a THIN ROLL of paint along its edge, never
+    // by burying the whole blade. That roll is what lets one pull lay a clean
+    // plane and then run out into broken rock, and it is how the blade keeps a
+    // hard edge on the side that is cutting.
+    dipRegion: { x0: -0.1, y0: -0.1, x1: 1.1, y1: 0.38 },
     splay: 0.0,
     name: '#10 Painting Knife',
     short: '#10',
@@ -651,6 +656,11 @@ export const TOOLS = [
   }),
   tool({
     id: 'knife-5',
+    // A knife is loaded by drawing a THIN ROLL of paint along its edge, never
+    // by burying the whole blade. That roll is what lets one pull lay a clean
+    // plane and then run out into broken rock, and it is how the blade keeps a
+    // hard edge on the side that is cutting.
+    dipRegion: { x0: -0.1, y0: -0.1, x1: 1.1, y1: 0.38 },
     splay: 0.0,
     name: '#5 Painting Knife',
     short: '#5',

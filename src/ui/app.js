@@ -53,6 +53,7 @@ const state = {
   panX: 0,
   panY: 0,
   squeezeSlot: 0,
+  dip: 'all',
   lessonId: LESSONS[0].id,
   lessonStep: -1,
 };
@@ -469,10 +470,12 @@ function selectPaint(id, { squeezeOnly = false } = {}) {
     toast(`${tool.name} carries no paint of its own -- it works with what is already there.`);
     return;
   }
-  engine.loadBrush(hexToRgb(paint.hex), paint.tint, 1, true, paint.opacity);
-  engine.setStock(hexToRgb(paint.hex), paint.tint, paint.opacity);
+  const region = dipRegion();
+  engine.loadBrush(hexToRgb(paint.hex), paint.tint, 1, !region, paint.opacity, region);
+  if (!region) engine.setStock(hexToRgb(paint.hex), paint.tint, paint.opacity);
+  engine.sampleReservoir();
   updateBrushState({ colour: hexToRgb(paint.hex), load: 1 });
-  toast(paint.note);
+  toast(region ? `${paint.name} on the ${state.dip === 'tip' ? 'edge' : state.dip}. Dip the other side in something else.` : paint.note);
 }
 
 function squeezeOntoPalette(paint) {
@@ -506,8 +509,37 @@ function squeezeOntoPalette(paint) {
   needsRender = true;
 }
 
+// Which part of the bristle bed a dip reaches, in 0..1 bristle space. The
+// working edge of a tool is the BOTTOM of its footprint -- that is where the
+// tips are -- so "edge" is a shallow band there, which is exactly how a knife
+// takes a thin roll of paint along its blade.
+const DIP_REGIONS = {
+  all: null,
+  left: { x0: -0.1, y0: -0.1, x1: 0.48, y1: 1.1 },
+  right: { x0: 0.52, y0: -0.1, x1: 1.1, y1: 1.1 },
+  tip: { x0: -0.1, y0: -0.1, x1: 1.1, y1: 0.42 },
+};
+
+function dipRegion() {
+  const tool = TOOLS_BY_ID[state.toolId];
+  if (state.dip === 'all') return tool.dipRegion || null;
+  return DIP_REGIONS[state.dip] || null;
+}
+
+/** Draw what is actually on the bristles, so a two-colour load is visible. */
+function drawBrushChip() {
+  const el = $('brush-chip');
+  if (!el || !engine) return;
+  const ctx = el.getContext('2d');
+  const img = engine.reservoirImage(el.width);
+  ctx.clearRect(0, 0, el.width, el.height);
+  if (!img) return;
+  ctx.putImageData(new ImageData(img.data, img.size, img.size), 0, 0);
+}
+
 function updateBrushState({ colour, load }) {
-  $('brush-chip').style.background = rgbToHex(colour);
+  drawBrushChip();
+  $('brush-chip').style.setProperty('--c', rgbToHex(colour));
   // Load is a fill fraction now, so the meter needs no per-tool scaling and
   // finally reads true.
   const pct = Math.max(0, Math.min(1, load));
@@ -1163,8 +1195,23 @@ function wireTopBar() {
     needsRender = true;
     toast('Palette scraped clean.');
   });
+  for (const b of document.querySelectorAll('.dip')) {
+    b.addEventListener('click', () => {
+      state.dip = b.dataset.dip;
+      for (const o of document.querySelectorAll('.dip')) {
+        o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+      }
+      toast(
+        state.dip === 'all'
+          ? 'The whole brush goes in the paint.'
+          : 'Only that part goes in. Dip the other side in another colour and one touch lays both.'
+      );
+    });
+  }
+
   $('btn-clean-brush').addEventListener('click', () => {
     engine.cleanBrush();
+    engine.sampleReservoir();
     updateBrushState({ colour: [0.85, 0.84, 0.81], load: 0 });
     toast('Beat the devil out of it. Clean brush.');
   });

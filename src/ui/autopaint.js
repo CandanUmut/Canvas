@@ -66,16 +66,74 @@ function flowAt(img, w, h, x, y) {
 }
 
 /**
+ * How hard the picture changes at each pixel — Sobel magnitude, scaled 0..1.
+ *
+ * Scaled against the 99.5th percentile rather than the single hottest pixel,
+ * so one speck of noise or one blown highlight cannot flatten the whole map
+ * and leave every real edge reading as nothing.
+ */
+function edgeMap(img, w, h) {
+  const e = new Float32Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      const gx =
+        luma(img, i - w + 1) + 2 * luma(img, i + 1) + luma(img, i + w + 1) -
+        luma(img, i - w - 1) - 2 * luma(img, i - 1) - luma(img, i + w - 1);
+      const gy =
+        luma(img, i + w - 1) + 2 * luma(img, i + w) + luma(img, i + w + 1) -
+        luma(img, i - w - 1) - 2 * luma(img, i - w) - luma(img, i - w + 1);
+      e[i] = Math.hypot(gx, gy);
+    }
+  }
+  // Percentile by histogram: a full sort of a megapixel is not worth it.
+  const BINS = 512;
+  let hi = 1e-6;
+  for (let i = 0; i < e.length; i++) if (e[i] > hi) hi = e[i];
+  const hist = new Int32Array(BINS);
+  for (let i = 0; i < e.length; i++) hist[Math.min(BINS - 1, (e[i] / hi * BINS) | 0)]++;
+  let seen = 0;
+  const want = e.length * 0.995;
+  let top = hi;
+  for (let b = 0; b < BINS; b++) {
+    seen += hist[b];
+    if (seen >= want) { top = ((b + 1) / BINS) * hi; break; }
+  }
+  const inv = 1 / Math.max(top, 1e-6);
+  for (let i = 0; i < e.length; i++) e[i] = Math.min(1, e[i] * inv);
+  return e;
+}
+
+/**
  * The passes. Big flat brushes block the picture in; smaller ones go back over
  * whatever is still wrong; the last pass is short dabs for the detail that is
  * too small to draw through.
+ *
+ * Two knobs stop a stroke wandering off the thing it started on, because
+ * measured separately neither is as good as the pair. `edge` is a threshold on
+ * the picture's own gradient; `sharp` is how far the full-resolution colour may
+ * drift from what the stroke is laying. The big blocking-in brushes are held to
+ * one region, the small ones are let across almost anything (edge 1.0 and sharp
+ * 3.0 both exceed any attainable value, so the last pass is free).
+ *
+ * Measured on the blocking-in pass by `tools/strokes.mjs`, share of strokes
+ * that cross a region boundary, at the thresholds below:
+ *
+ *     neither 66.7%   edge 50.0%   sharp 47.6%   both 35.7%
+ *
+ * The pair also costs stroke length, 4.24 points down to 2.88, and short
+ * blocking-in strokes are what make output read as scribble rather than
+ * brushwork. So the edge thresholds are deliberately looser than the straying
+ * figure alone would argue for: tightening them by a third takes straying to
+ * 28.6% and length to 2.52, and on this pass that is three strokes out of
+ * forty-two bought with another 12% of the stroke length. Not worth it.
  */
-const PASSES = [
-  { tool: 'brush-2inch', inches: 2.0, grid: 96, blur: 34, error: 0.055, len: 7, pressure: 0.62 },
-  { tool: 'brush-2inch', inches: 1.2, grid: 52, blur: 18, error: 0.070, len: 7, pressure: 0.58 },
-  { tool: 'brush-1inch', inches: 0.7, grid: 30, blur: 9, error: 0.085, len: 6, pressure: 0.55 },
-  { tool: 'brush-filbert', inches: 0.34, grid: 16, blur: 4, error: 0.105, len: 5, pressure: 0.5 },
-  { tool: 'brush-round', inches: 0.16, grid: 9, blur: 2, error: 0.135, len: 1, pressure: 0.5 },
+export const PASSES = [
+  { tool: 'brush-2inch', inches: 2.0, grid: 96, blur: 34, error: 0.055, len: 7, pressure: 0.62, edge: 0.21, sharp: 0.34 },
+  { tool: 'brush-2inch', inches: 1.2, grid: 52, blur: 18, error: 0.070, len: 7, pressure: 0.58, edge: 0.30, sharp: 0.40 },
+  { tool: 'brush-1inch', inches: 0.7, grid: 30, blur: 9, error: 0.085, len: 6, pressure: 0.55, edge: 0.45, sharp: 0.48 },
+  { tool: 'brush-filbert', inches: 0.34, grid: 16, blur: 4, error: 0.105, len: 5, pressure: 0.5, edge: 0.72, sharp: 0.62 },
+  { tool: 'brush-round', inches: 0.16, grid: 9, blur: 2, error: 0.135, len: 1, pressure: 0.5, edge: 1.0, sharp: 3.0 },
 ];
 
 /**
@@ -98,7 +156,11 @@ export async function paintFromPicture(s, target, opts = {}) {
     onProgress(pi, PASSES.length, `${pass.tool} at ${pass.inches}"`);
 
     const want = blur(target.data, w, h, pass.blur);
-
+    // Read off the picture ITSELF, not the blurred version: a big brush should
+    // still know where the mountain ends while working at a scale that cannot
+    // see the detail on it.
+    const edges = edgeMap(target.data, w, h);
+  
     // What is on the canvas now, so this pass only touches what is wrong.
     const shot = s.pixels();
     const have = new Float32Array(w * h * 3);
@@ -167,11 +229,34 @@ export async function paintFromPicture(s, target, opts = {}) {
         py += dir.y * step;
         if (px < -pass.grid || py < -pass.grid || px > w + pass.grid || py > h + pass.grid) break;
         const j = Math.min(h - 1, Math.max(0, py | 0)) * w + Math.min(w - 1, Math.max(0, px | 0));
+        if (edges[j] > pass.edge) break;
         const d =
           Math.abs(want[j * 3] - colour[0]) +
           Math.abs(want[j * 3 + 1] - colour[1]) +
           Math.abs(want[j * 3 + 2] - colour[2]);
         if (d > 0.22) break;
+        // The same question again, of the SHARP picture. want[] is blurred to
+        // this pass's scale, and at the coarse scales that blur smears a
+        // skyline into a gradient wide enough that d never trips: a 2" brush
+        // walks straight off the sky and onto the mountain, laying sky colour
+        // over it, and the shape is gone before a smaller brush arrives to
+        // rescue it. A stroke belongs to one thing in the picture, and which
+        // thing that is is decided at full resolution even when the brush is
+        // working too coarsely to see it.
+        //
+        // Asked this way rather than as an edge-magnitude threshold, it costs
+        // no extra pass over the image and, more to the point, it is in colour
+        // units. A Sobel map normalised against its own peak says what counts
+        // as an edge by the statistics of the particular picture, so on a flat
+        // posterised source nearly every pixel clears the bar, every stroke
+        // dies after a step or two, and the canvas comes out as scribble with
+        // bare gaps between. This asks the question that was actually meant:
+        // is the stroke still on the thing it started on.
+        const sharp =
+          Math.abs(target.data[j * 3] - colour[0]) +
+          Math.abs(target.data[j * 3 + 1] - colour[1]) +
+          Math.abs(target.data[j * 3 + 2] - colour[2]);
+        if (sharp > pass.sharp) break;
         pts.push([px, py]);
       }
       if (pts.length < 2) pts.push([cx + 0.01, cy]);

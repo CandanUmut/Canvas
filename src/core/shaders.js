@@ -281,6 +281,11 @@ uniform float uOpacity;   // 0 = pure glaze, 1 = buries what is underneath
 // before it, and a layer is defined here as "fully covering" -- so the film
 // that takes part is a good fraction of one.
 #define MIX_FILM 0.55
+// How readily a palette gives paint up compared with a canvas. Below 1 because
+// a pile is a reservoir you keep going back to, not a mark you are making.
+#define PALETTE_GIVE_UP 0.55
+// A pile is deeper than any mark a tool makes, so it gets its own ceiling.
+#define PALETTE_MAX_VOLUME 6.0
 
 // "under" is how much paint is already there. A thin film cannot bury a
 // thick pile -- without that term one pass of a white brush turned a pile of
@@ -368,9 +373,6 @@ float tipFilm(float load) {
 }
 
 float layShare(float load) {
-  // A palette is a source, not a surface being painted: a tool put into a pile
-  // fills from it however much it is already carrying.
-  if (uPalette > 0.5) return 0.0;
   return smoothstep(uKnee * 0.5, uKnee * 1.5, tipFilm(load));
 }
 
@@ -398,8 +400,16 @@ float takeLoad(float contact, float volume, float wetness, float load) {
   // it crossed first swamped the mixture and every colour came off the board
   // nearly black.
   float room = 1.0 - mix(tipFilm(load), load, uPalette);
-  float amt = uPickup * uDeplete * contact * avail * wetness * room
-            * (1.0 - layShare(load));
+
+  // One-way transfer is a rule about a PAINTING, where a tool laying paint
+  // must not scrub at the same time. A palette is not a painting: a pile
+  // always gives, whether or not the tool is also laying paint down, and the
+  // tool must be able to lay paint down or there is nowhere to mix. Gating
+  // the board by the same rule made it pickup-only -- you could load a single
+  // pigment off a pile and nothing else, and dragging two colours together
+  // left the board untouched, because the brush could not put anything on it.
+  float oneWay = mix(1.0 - layShare(load), 1.0, uPalette);
+  float amt = uPickup * uDeplete * contact * avail * wetness * room * oneWay;
   // A pass can lift at most this share of the film it crosses. A dry brush
   // dragged over wet paint takes some of it up; it does not take nearly all
   // of it, and letting it meant a tool that had run out left a track scraped
@@ -507,6 +517,36 @@ void main() {
   // already moving.
   float touch = uSoften * uDeplete * contact * min(paint.a, 1.0) * (1.0 - uPalette);
   weight = clamp(weight + touch * (1.0 - weight), 0.0, 1.0);
+
+  // ...and on the palette, by exchange. Mass and colour are separate channels,
+  // which is the whole point of WetBrush's decoupling, and the palette is
+  // where ignoring it hurts most. Room above is 1 - load on a board, so a
+  // brush at full load gains no mass there; with the thin-film term switched
+  // off for the palette as well, a full brush was sealed shut -- no mass in,
+  // no colour in. And since clicking a pigment swatch FILLS the brush, every
+  // brush arrived at the palette already full. The result was a palette you
+  // could not mix on at all: whatever you last clicked was the only colour you
+  // could lay down, dragging through a second pile picked up nothing, and the
+  // piles just sat there. Which is exactly what it looked like from outside.
+  //
+  // Pressing full bristles into a pile still moves paint: what is on the hairs
+  // and what is in the pile interpenetrate and trade places. That is an
+  // EXCHANGE at constant mass, not a pickup, so it is not gated by room -- it
+  // is gated by the opposite, by how sealed the tool is, and it fills in
+  // exactly the case mass transfer cannot reach. An empty brush gets its
+  // colour by taking paint on and needs none of this; a full one gets it all
+  // this way.
+  //
+  // Going by mass in contact rather than by tinting strength is also what
+  // keeps this from drifting: the thin-film term is a tinting-strength mix
+  // applied afresh every dab, so on a colour that is already moving it
+  // compounds towards whichever pigment is strongest, and three parts Sap
+  // Green to one of black came off the board nearly black. A volume swap is
+  // symmetric and stays put.
+  float avail = clamp(paint.a / max(uSoak, 1e-4), 0.0, 1.0);
+  float sealed = mix(tipFilm(res.a), res.a, uPalette);
+  float swap = uPalette * uPickup * uDeplete * contact * lay * avail * sealed;
+  weight = clamp(weight + swap * (1.0 - weight), 0.0, 1.0);
 
   vec3 colour = res.rgb;
   if (weight > 0.00001 && paint.a > 0.0001) {
@@ -630,8 +670,17 @@ void main() {
   float give = giveVolume(lay, contact, res.a);
   float take = takeVolume(lay, contact, paint.a, wet, res.a);
 
-  // A mixture you made on the palette has to stay there to reload from.
-  if (uPalette > 0.5) take = 0.0;
+  // A palette gives paint up, like anything else a loaded tool is dragged
+  // across. Pinning it -- take = 0 on the board, and the volume floor below --
+  // was meant to stop a mixture you had made from being carried off before you
+  // could reload from it, but it also meant nothing could ever be pulled OUT
+  // of a pile: you dragged a brush through ultramarine and the pile sat there
+  // untouched, with no streak behind it. Pulling a colour out of the pile and
+  // drawing it into the open board is the basic gesture of mixing; without it
+  // the piles may as well be buttons. What actually protects a mixture is that
+  // the piles are DEEP -- takeLoad already caps one pass at 45% of the film it
+  // crosses, so a pile survives many strokes -- not that they are immortal.
+  take *= mix(1.0, PALETTE_GIVE_UP, uPalette);
 
   float remain = max(paint.a - take, 0.0);
   float colourGive = give * (1.0 - uClearMix);
@@ -654,8 +703,13 @@ void main() {
     colour = mix(colour, res.rgb, hidingPower(colourGive, film, surf.g));
   }
 
-  float volume = clamp(remain + give, 0.0, uMaxVolume);
-  if (uPalette > 0.5) volume = max(volume, paint.a);
+  // uMaxVolume is how much paint a MARK can hold -- a property of the tool
+  // making it. A pile squeezed from a tube is deeper than any mark, so capping
+  // it at the tool's figure snapped a fresh pile from 5 layers down to 1.9 the
+  // instant a brush first touched it. That went unnoticed while the palette
+  // had a volume floor holding it back up; taking the floor away exposed it.
+  float ceiling = max(uMaxVolume, uPalette * PALETTE_MAX_VOLUME);
+  float volume = clamp(remain + give, 0.0, ceiling);
 
   float height = surf.r - take * 0.9 + give * uBody * 0.85 * (0.78 + 0.38 * bristle);
   height = mix(height, height * 0.35, uLevel * contact);
