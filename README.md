@@ -219,6 +219,15 @@ node tools/probe.mjs                    # what the simulation does, in numbers
 python3 tools/compare.py out/run-01/final.png reference.jpg out/cmp
 ```
 
+`strokes.mjs` measures how the picture-to-painting mode lays strokes — whether
+a stroke stays on the one thing in the picture it started on, and whether it is
+still long enough to read as brushwork rather than scribble. That logic is pure
+arithmetic over the target image, so it runs offline in seconds instead of
+painting a whole picture in a browser for half an hour, which is the difference
+between trying one idea and trying twelve. Read its figures per pass: the final
+detail pass contributes several thousand two-point dabs by design and swamps
+any average taken across all of them.
+
 `paint.mjs` replays a painting in a real browser and writes each stage out as
 it is painted. `probe.mjs` asks the questions a wet-on-wet painter cares about
 and answers them in numbers — what a loaded brush comes back holding, whether

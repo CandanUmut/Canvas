@@ -116,16 +116,19 @@ function edgeMap(img, w, h) {
  * one region, the small ones are let across almost anything (edge 1.0 and sharp
  * 3.0 both exceed any attainable value, so the last pass is free).
  *
- * Measured on the blocking-in pass, share of strokes that cross a region
- * boundary: 66.7% with neither test, 47.6% with `sharp` alone, 38.1% with
- * `edge` alone, 35.7% with both at these thresholds. The pair also costs
- * stroke length — 4.24 points down to 2.88 — and short blocking-in strokes are
- * what make the output read as scribble rather than brushwork, so the edge
- * thresholds are deliberately looser than the straying figure alone would
- * suggest. Tighter buys 35.7% -> 28.6%, which on this pass is three strokes
- * out of forty-two, and costs another 12% of stroke length. Not worth it.
+ * Measured on the blocking-in pass by `tools/strokes.mjs`, share of strokes
+ * that cross a region boundary, at the thresholds below:
+ *
+ *     neither 66.7%   edge 50.0%   sharp 47.6%   both 35.7%
+ *
+ * The pair also costs stroke length, 4.24 points down to 2.88, and short
+ * blocking-in strokes are what make output read as scribble rather than
+ * brushwork. So the edge thresholds are deliberately looser than the straying
+ * figure alone would argue for: tightening them by a third takes straying to
+ * 28.6% and length to 2.52, and on this pass that is three strokes out of
+ * forty-two bought with another 12% of the stroke length. Not worth it.
  */
-const PASSES = [
+export const PASSES = [
   { tool: 'brush-2inch', inches: 2.0, grid: 96, blur: 34, error: 0.055, len: 7, pressure: 0.62, edge: 0.21, sharp: 0.34 },
   { tool: 'brush-2inch', inches: 1.2, grid: 52, blur: 18, error: 0.070, len: 7, pressure: 0.58, edge: 0.30, sharp: 0.40 },
   { tool: 'brush-1inch', inches: 0.7, grid: 30, blur: 9, error: 0.085, len: 6, pressure: 0.55, edge: 0.45, sharp: 0.48 },
