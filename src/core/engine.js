@@ -169,10 +169,19 @@ export class Engine {
 
   // --- brush reservoir ----------------------------------------------------
 
-  /** Dip the brush. `replace` wipes what was there; otherwise it mixes in. */
-  loadBrush(colour, tint, load, replace = true, opacity = 1) {
+  /**
+   * Dip the brush. `replace` wipes what was there; otherwise only the hairs
+   * this dip reaches are changed, which is what lets a tool carry two colours
+   * at once -- dark on one corner of a fan brush and the highlight on the
+   * other, so one touch lays a bough and its light together.
+   *
+   * `region` is the part of the bristle bed going into the paint, in 0..1
+   * bristle space: {x0, y0, x1, y1}. The whole bed by default.
+   */
+  loadBrush(colour, tint, load, replace = true, opacity = 1, region = null) {
     const gl = this.gl;
     const mask = this.maskTexture(this.tool);
+    const r = region || { x0: -0.1, y0: -0.1, x1: 1.1, y1: 1.1 };
     this.reservoir.b.bind();
     this.programs.loadBrush.use().set({
       uRect: FULL_RECT,
@@ -181,13 +190,22 @@ export class Engine {
       uColour: colour,
       uLoad: load,
       uReplace: replace ? 1 : 0,
+      uRegion: [r.x0, r.y0, r.x1, r.y1],
+      uRegionSoft: region ? 0.06 : 0.001,
     });
     drawQuad(gl);
     this._swapReservoir();
-    this.brush.colour = colour;
-    this.brush.tint = tint;
-    this.brush.opacity = opacity;
-    this.brush.load = Math.min(load, 1);
+    // A partial dip leaves the rest of the bed as it was, so the cached colour
+    // is no longer the whole story; sampleReservoir is what tells the truth
+    // about a tool carrying two colours.
+    if (!region) {
+      this.brush.colour = colour;
+      this.brush.tint = tint;
+      this.brush.opacity = opacity;
+      this.brush.load = Math.min(load, 1);
+    } else {
+      this.brush.load = Math.max(this.brush.load, Math.min(load, 1));
+    }
     this.brush.dirty = false;
   }
 

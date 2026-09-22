@@ -798,12 +798,36 @@ uniform sampler2D uReservoir;
 uniform sampler2D uBristle;
 uniform vec3  uColour;
 uniform float uLoad;
-uniform float uReplace;   // 1 = wipe first, 0 = add to what is there
+uniform float uReplace;   // 1 = wipe what is there, 0 = dip only part of it
+uniform vec4  uRegion;    // x0, y0, x1, y1 in bristle space: which part to dip
+uniform float uRegionSoft;
 out vec4 outReservoir;
+
 void main() {
   float bristle = texture(uBristle, vUV).r;
   vec4 res = texture(uReservoir, vUV);
-  outReservoir = vec4(uColour, clamp(uLoad * step(0.001, bristle), 0.0, 1.0));
+
+  // Which part of the bristle bed is going into the paint. Dipping only a
+  // corner, an edge or one side is not a flourish -- it is how a fan brush
+  // lays a bough and its highlight in ONE touch, how the edge of a cloud is
+  // caught, and how a mountain's lit side goes on. Without it the reservoir
+  // could only ever hold one flat colour, whatever the tool.
+  float k = uRegionSoft;
+  float inX = smoothstep(uRegion.x - k, uRegion.x + k, vUV.x)
+            * smoothstep(uRegion.z + k, uRegion.z - k, vUV.x);
+  float inY = smoothstep(uRegion.y - k, uRegion.y + k, vUV.y)
+            * smoothstep(uRegion.w + k, uRegion.w - k, vUV.y);
+  float take = inX * inY * step(0.001, bristle);
+
+  float load = mix(res.a, uLoad, take);
+  vec3 colour = mix(res.rgb, uColour, take);
+  // A full wipe still clears the hairs this dip does not reach.
+  if (uReplace > 0.5) {
+    load = mix(0.0, uLoad, take) + mix(0.0, 0.0, 1.0 - take);
+    colour = mix(vec3(0.97, 0.96, 0.94), uColour, take);
+    load = uLoad * take * step(0.001, bristle);
+  }
+  outReservoir = vec4(colour, clamp(load, 0.0, 1.0));
 }
 `;
 

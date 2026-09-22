@@ -6,6 +6,7 @@ import { TOOLS, TOOLS_BY_ID, TOOL_CATEGORIES, MASK_RES } from '../data/brushes.j
 import { PIGMENTS, MEDIUMS, ALL_PAINTS, PAINTS_BY_ID, hexToRgb, rgbToHex } from '../data/colors.js';
 import { LESSONS } from '../data/lessons.js';
 import * as storage from '../core/storage.js';
+import { paintFromPicture } from './autopaint.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -1014,6 +1015,74 @@ function applyBaseCoat(mediumId) {
   toast(`${m.name} down. Work quickly while it is wet — that is the whole idea.`);
 }
 
+// ----------------------------------------------------- painting a picture ---
+
+let painting = null;
+
+/**
+ * Paint from a photograph, with the real tools and the real wet paint. It is
+ * not a filter over the image: every stroke goes through the same simulation
+ * your own hand does, so it blends into what is wet, runs out, and picks up
+ * what it is dragged through.
+ */
+async function paintPicture(file) {
+  if (painting) {
+    painting.stop = true;
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = () => rej(new Error('could not read that picture'));
+      im.src = url;
+    });
+
+    // Fit the picture to the canvas, covering it.
+    const w = canvasSurface.width;
+    const h = canvasSurface.height;
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    const scale = Math.max(w / img.width, h / img.height);
+    const dw = img.width * scale;
+    const dh = img.height * scale;
+    ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    const px = ctx.getImageData(0, 0, w, h).data;
+    const data = new Float32Array(w * h * 3);
+    for (let i = 0; i < w * h; i++) {
+      data[i * 3] = px[i * 4] / 255;
+      data[i * 3 + 1] = px[i * 4 + 1] / 255;
+      data[i * 3 + 2] = px[i * 4 + 2] / 255;
+    }
+
+    painting = { stop: false };
+    $('btn-picture').textContent = 'Stop painting';
+    $('btn-picture').classList.add('busy');
+    engine.pushHistory(canvasSurface);
+
+    await paintFromPicture(window.studio.script, { data, width: w, height: h }, {
+      shouldStop: () => painting.stop,
+      onProgress: (done, total, label) => {
+        toast(done >= total ? 'Finished.' : `Painting — pass ${done + 1} of ${total}, ${label}`);
+        needsRender = true;
+      },
+    });
+  } catch (err) {
+    toast(err.message || String(err));
+  } finally {
+    URL.revokeObjectURL(url);
+    painting = null;
+    $('btn-picture').textContent = 'Paint a picture';
+    $('btn-picture').classList.remove('busy');
+    updateUndoButtons();
+    scheduleSave();
+    needsRender = true;
+  }
+}
+
 function wireTopBar() {
   $('btn-canvas').addEventListener('click', (e) =>
     showMenu(e.currentTarget, [
@@ -1041,6 +1110,13 @@ function wireTopBar() {
       },
     ])
   );
+
+  $('btn-picture').addEventListener('click', () => $('picture-file').click());
+  $('picture-file').addEventListener('change', (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (file) paintPicture(file);
+  });
 
   $('btn-dry').addEventListener('click', () => {
     engine.pushHistory(canvasSurface);
@@ -1569,6 +1645,19 @@ function makeScript() {
       updateBrushState(r);
       needsRender = true;
       return { colour: r.colour, hex: rgbToHex(r.colour), load: r.load, tool: t.id };
+    },
+    /**
+     * Dip the tool in a colour directly, the way the eyedropper does. `region`
+     * dips only part of the bristle bed -- {x0, y0, x1, y1} in 0..1 -- so a
+     * tool can carry two colours at once: dark on one corner of a fan brush
+     * and the highlight on the other, laying a bough and its light in one
+     * touch.
+     */
+    colour(rgb, { opacity = 0.92, tint = 1, region = null, replace = true } = {}) {
+      engine.loadBrush(rgb.slice(), tint, 1, replace, opacity, region);
+      if (!region) engine.setStock(rgb.slice(), tint, opacity);
+      updateBrushState({ colour: rgb, load: 1 });
+      return this;
     },
     /** Whatever is on the bristles right now, as an sRGB triple. */
     brush() {
