@@ -480,7 +480,7 @@ export class Engine {
   }
 
   /** Squeeze a blob straight from the tube onto the palette. */
-  blob(surface, { x, y, radius, colour, tint = 1, amount = 1.4, body = 1.0, wetness = 1, clearMix = 0, opacity = 1 }) {
+  blob(surface, { x, y, radius, colour, tint = 1, amount = 1.4, body = 1.0, wetness = 1, clearMix = 0, opacity = 1, replace = false }) {
     const gl = this.gl;
     const rect = this._footprintRect(surface, x, y, radius * 2.6, radius * 2.6);
     if (!rect) return;
@@ -500,6 +500,7 @@ export class Engine {
       uWetness: wetness,
       uClearMix: clearMix,
       uOpacity: opacity,
+      uReplace: replace ? 1 : 0,
       uSeed: (x * 0.137 + y * 0.311) % 6.283,
     });
     drawQuad(gl);

@@ -88,6 +88,7 @@ async function saveNow() {
       canvas: engine.captureState(canvasSurface),
       palette: engine.captureState(paletteSurface),
       squeezeSlot: state.squeezeSlot,
+      piles: palettePiles,
       toolId: state.toolId,
       paintId: state.paintId,
       sizes: state.sizes,
@@ -112,6 +113,9 @@ async function restoreSaved() {
   if (saved.palette) engine.restoreState(paletteSurface, saved.palette);
   if (saved.sizes) Object.assign(state.sizes, saved.sizes);
   if (saved.squeezeSlot != null) state.squeezeSlot = saved.squeezeSlot;
+  // Without this the piles come back as paint but stop being sources, so the
+  // board would quietly go back to running out after a reload.
+  if (Array.isArray(saved.piles)) palettePiles = saved.piles;
   if (saved.toolId && TOOLS_BY_ID[saved.toolId]) state.toolId = saved.toolId;
   if (saved.paintId && PAINTS_BY_ID[saved.paintId]) state.paintId = saved.paintId;
   restoring = false;
@@ -478,6 +482,21 @@ function selectPaint(id, { squeezeOnly = false } = {}) {
   toast(region ? `${paint.name} on the ${state.dip === 'tip' ? 'edge' : state.dip}. Dip the other side in something else.` : paint.note);
 }
 
+// The tube piles currently on the board. A pile is a SOURCE, not a mark: you
+// go back to it for more of that colour, so it has to still be that colour and
+// still be there when you do. Keeping the list lets them be laid down again
+// after a stroke has dragged through them.
+let palettePiles = [];
+
+function restorePalettePiles() {
+  for (const pile of palettePiles) engine.blob(paletteSurface, { ...pile, replace: true });
+  if (palettePiles.length) needsRender = true;
+}
+
+function forgetPalettePiles() {
+  palettePiles = [];
+}
+
 function squeezeOntoPalette(paint) {
   // Darks up the left edge, lights across the top -- Bob's own palette layout,
   // and it keeps the middle of the board clear to mix in.
@@ -493,7 +512,7 @@ function squeezeOntoPalette(paint) {
     x = m;
     y = PALETTE_H - m * 2 - (i - 5 + 0.5) * ((PALETTE_H - m * 3) / 7);
   }
-  engine.blob(paletteSurface, {
+  const pile = {
     x,
     y,
     radius: BLOB_RADIUS,
@@ -505,7 +524,12 @@ function squeezeOntoPalette(paint) {
     wetness: 1,
     clearMix: paint.clear ? 1 : 0,
     opacity: paint.opacity,
-  });
+  };
+  // Squeezing the same colour onto the same slot twice should not stack up a
+  // second entry to restore every stroke.
+  palettePiles = palettePiles.filter((p) => Math.hypot(p.x - x, p.y - y) > BLOB_RADIUS * 0.5);
+  palettePiles.push(pile);
+  engine.blob(paletteSurface, pile);
   needsRender = true;
 }
 
@@ -974,7 +998,13 @@ function wirePointer(el, getSurface, { palette }) {
     const r = engine.sampleReservoir();
     // Mixing on the palette is how you choose a colour, so whatever comes off
     // the board becomes the charged colour for the canvas.
-    if (palette) engine.stockFromBrush();
+    if (palette) {
+      engine.stockFromBrush();
+      // ...and only then lay the tube piles back down. After the brush has
+      // been read, so the mixture you just made is what it carries, and never
+      // before, or restoring would be what it picked up.
+      restorePalettePiles();
+    }
     updateBrushState(r);
     needsRender = true;
   };
@@ -1191,6 +1221,7 @@ function wireTopBar() {
 
   $('btn-wipe-palette').addEventListener('click', () => {
     engine.clear(paletteSurface);
+    forgetPalettePiles();
     state.squeezeSlot = 0;
     needsRender = true;
     toast('Palette scraped clean.');
@@ -1625,6 +1656,10 @@ function makeScript() {
       // went on. The cloud grey came off the board at #1c343d where the same
       // ratio on a clean board gives #839a9e.
       engine.clear(paletteSurface);
+      // A scripted mix lays its own temporary strip. Those are not tube piles
+      // and must not be restored afterwards, and the user's piles are gone now
+      // anyway -- the board was just scraped.
+      forgetPalettePiles();
       state.squeezeSlot = 0;
       const y = PALETTE_H * 0.52;
       const x0 = PALETTE_W * 0.14;
