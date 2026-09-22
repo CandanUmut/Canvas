@@ -791,9 +791,67 @@ export const TOOLS = [
     scrape: 0.85,
     noLoad: true,
   }),
+  tool({
+    id: 'util-picker',
+    name: 'Colour Picker',
+    short: 'Pick',
+    rackName: 'Picker',
+    blurb:
+      'Take a colour straight off the painting and load the brush with it. ' +
+      'It picks the PAINT, not the lit and shaded pixel you see, so what ' +
+      'comes back is the pigment that is really there. Alt-click does the ' +
+      'same with any tool already in your hand.',
+    category: 'utility',
+    // Never used: pointerdown picks and returns before a stroke can begin.
+    // setTool uploads a mask for whatever is selected though, so it needs one.
+    shape: roundMask(),
+    inches: 0.3,
+    range: [0.3, 0.3],
+    pick: true,
+    noLoad: true,
+    flow: 0.0,
+    pickup: 0.0,
+    soften: 0.0,
+  }),
 ];
 
+
+
 export const TOOLS_BY_ID = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
+
+/**
+ * The dropper. Not a painting tool at all -- it takes a colour off the canvas
+ * or the palette and charges the brush with it, the way the picker in any
+ * paint program does.
+ *
+ * It exists as a TOOL rather than only as the alt-click it has always been,
+ * because alt-click is invisible to anyone who has not been told about it and
+ * impossible on a tablet, which is most of the people painting with this.
+ *
+ * The footprint is never used -- pointerdown picks and returns before a stroke
+ * begins -- but setTool uploads a mask for whatever is selected, so it gets a
+ * small round one rather than an undefined.
+ */
+const PICKER = tool({
+  id: 'util-picker',
+  name: 'Colour Picker',
+  short: 'Pick',
+  rackName: 'Picker',
+  blurb:
+    'Take a colour straight off the painting and load the brush with it. ' +
+    'Picks the paint itself, not the lit and shaded pixel, so what you get ' +
+    'back is the pigment that is actually there. Alt-click does the same ' +
+    'thing with any tool in your hand.',
+  category: 'utility',
+  shape: roundMask(),
+  inches: 0.3,
+  range: [0.3, 0.3],
+  pick: true,
+  noLoad: true,
+  flow: 0.0,
+  pickup: 0.0,
+  soften: 0.0,
+});
 
 export const TOOL_CATEGORIES = [
   { id: 'brush', label: 'Brushes' },
