@@ -347,11 +347,11 @@ painted at size without moving a number. A full painting replays in 12–30
 minutes at half size in headless Chromium on SwiftShader; a single tree takes
 about a minute, which is the loop you actually iterate in.
 
-### Four kinds of measurement, in increasing order of usefulness
+### Five kinds of measurement, in increasing order of usefulness
 
 **1. Whole-picture difference against a reference.** Mean absolute difference
 took us from 0.228 to 0.162 over a sprint. It is the metric that sounds most
-scientific and it is the least useful of the four: it is dominated by
+scientific and it is the least useful of the five: it is dominated by
 composition, it rewards blur, and it cannot tell you *what* to change.
 
 **2. Structured difference — band by band, scale by scale.** Split the picture
@@ -375,10 +375,55 @@ two-line answer to "does a second pass lay as much as the first". You are not
 going to see that in a painting; you are going to see a vague sense that
 something is wrong with the darks.
 
-**4. Mark sheets.** Render every tool's mark under a standard set of
+**4. Offline replays of the parts that are pure arithmetic.** Stroke placement
+and extension do not need the simulator to run — they are arithmetic over the
+target picture. Lifting that out into a harness that answers in seconds rather
+than painting a whole picture for half an hour is the difference between trying
+one idea and trying twelve, and twelve is what it took. `tools/strokes.mjs`.
+
+**5. Mark sheets.** Render every tool's mark under a standard set of
 conditions into a single contact sheet, and score the sameness of repeated
 marks. This is the only measurement that catches the "looks digital" failure
 in §5, and it is the one we added last, which was a mistake.
+
+### One more trap: an average over unlike things
+
+Our picture-to-painting mode lays strokes in coarse-to-fine passes,
+Hertzmann-style. We wanted strokes to stop at a boundary rather than drag sky
+colour across a mountain, added two tests for it, and measured the share of
+strokes that cross a region boundary — with regions defined by colour
+quantisation, so that neither test could mark its own homework.
+
+The aggregate said the change did **nothing**: 35.6% of strokes strayed before,
+33.9% after. We nearly threw it away on that number.
+
+Split by pass, the same run says:
+
+| pass | strokes | strayed, before | after |
+|---|---|---|---|
+| 2" blocking in | 42 | 66.7% | **35.7%** |
+| 2" second pass | 140 | 65.7% | 50.7% |
+| 1" | 432 | 55.6% | 47.0% |
+| filbert | 1529 | 50.8% | 49.7% |
+| round, detail dabs | 4800 | 21.5% | 21.5% |
+
+The effect is large, and it is exactly where it was designed to be — the coarse
+passes, the ones that can see least. The aggregate was worthless because the
+final pass contributes 4800 of the 6943 strokes, and those are single dabs *by
+design* — grid 9, length 1, deliberately exempt from both tests. Nearly 70% of
+the population could not respond to the treatment, and they drowned the 42
+strokes that mattered most.
+
+Nothing was wrong with the metric's arithmetic. It averaged over a population
+whose members were not doing the same job.
+
+**If a measurement says a change does nothing, check what the measurement is
+averaging over before believing it.** We also, in the same session, "improved"
+one of the two tests on a plausible theoretical argument and made it measurably
+worse at its job (47.6% against 38.1%), and caught that only because the
+per-pass harness was by then fast enough to re-run on a whim. Both mistakes
+came from the same place: reasoning about the mechanism instead of measuring
+the outcome.
 
 ### The rule we would actually write down
 
