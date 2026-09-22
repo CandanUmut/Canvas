@@ -119,7 +119,19 @@ function edgeMap(img, w, h) {
  * Measured on the blocking-in pass by `tools/strokes.mjs`, share of strokes
  * that cross a region boundary, at the thresholds below:
  *
- *     neither 66.7%   edge 50.0%   sharp 47.6%   both 35.7%
+ *     a real painting      neither 40.5%   edge 38.1%   sharp 23.8%   both 23.8%
+ *     a flat synthetic one neither 66.7%   edge 50.0%   sharp 47.6%   both 35.7%
+ *
+ * Both sources, because which of the two tests does the work DEPENDS on the
+ * source and we did not expect that. On flat posterised input the gradient
+ * test wins and the colour test is the weaker of the pair; on real paint, with
+ * its soft gradients and broken edges, they swap and the colour test does
+ * nearly all of it. These thresholds were tuned against the synthetic picture,
+ * which was the only one to hand and is unlike anything the mode is actually
+ * pointed at. Keeping both tests is what makes the result hold up on a source
+ * it was not tuned for — which on this evidence is luck rather than judgement,
+ * so treat the pair as load-bearing and re-measure on a real picture before
+ * dropping either.
  *
  * The pair also costs stroke length, 4.24 points down to 2.88, and short
  * blocking-in strokes are what make output read as scribble rather than

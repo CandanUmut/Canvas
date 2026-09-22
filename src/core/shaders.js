@@ -342,7 +342,12 @@ uniform float uSoften;    // colour taken on per pass regardless of load
 // and putting it there cost a round of "why will the app not boot" -- a GLSL
 // compile failure surfaces as window.studio never appearing, which looks
 // nothing like a missing #define.
-#define PALETTE_SWAP 0.5
+#define PALETTE_SWAP 0.40
+// How much faster a pile fills a brush than a painting's surface film does.
+#define PALETTE_LOAD 1.0
+// How far past uSoak a palette keeps rewarding depth, so a pile outweighs a
+// smear instead of being averaged with it.
+#define PALETTE_DEPTH 6.0
 
 // A light touch only meets the top of what is already there, which is how you
 // lay paint onto a thickly covered canvas without dragging up everything
@@ -413,12 +418,44 @@ float takeLoad(float contact, float volume, float wetness, float load) {
   // pigment off a pile and nothing else, and dragging two colours together
   // left the board untouched, because the brush could not put anything on it.
   float oneWay = mix(1.0 - layShare(load), 1.0, uPalette);
-  float amt = uPickup * uDeplete * contact * avail * wetness * room * oneWay;
+  // Pressing bristles into a PILE floods the bed: the paint is deep, it is
+  // soft, and it goes up between the hairs at once. uPickup is scaled for the
+  // other thing entirely -- lifting a thin film off a painting, a hair at a
+  // time -- and using that rate on a pile meant a clean 2" brush dragged
+  // right through a full pile of phthalo blue came away with 0.008 of a load,
+  // under one per cent, when clicking the swatch gives 0.99. The colour was
+  // correct and the quantity was nil, which from outside looks exactly like a
+  // pile that has run dry.
+  float flood = 1.0 + uPalette * PALETTE_LOAD * avail;
+
+  // How much a tool takes should go with how much is THERE. avail saturates
+  // at uSoak, which is right on a painting -- past a certain film depth a
+  // bristle is simply in contact and more underneath changes nothing. A
+  // palette is the opposite case: a pile five layers deep and a stray smear
+  // two tenths deep are not the same offer, and saturating made them
+  // identical. A brush is wide, a pile is not, and the footprint almost
+  // always spans both -- so dipping into a pile beside your mixing picked the
+  // mixing straight back up, and going back for a bit more blue handed you
+  // green. Measured: pile 5.02 pure blue, smear 0.20 green, brush came away
+  // 0.28,0.48,0.27.
+  float depth = clamp(here / max(uSoak, 1e-4), 0.0, PALETTE_DEPTH);
+  float draw = mix(avail, depth, uPalette);
+  float amt = uPickup * uDeplete * contact * draw * wetness * room * oneWay * flood;
   // A pass can lift at most this share of the film it crosses. A dry brush
   // dragged over wet paint takes some of it up; it does not take nearly all
   // of it, and letting it meant a tool that had run out left a track scraped
   // back past the base coat.
-  return min(amt, 0.45 * here * uDeplete / max(uHold, 1e-4));
+  // The 45%-of-the-film cap is a rule about a PAINTING: a tool may lift some
+  // of a thin film, never nearly all of it, or a brush that has run out
+  // scrapes a track back past the base coat. A pile is not a film. It is a
+  // reservoir deeper than the brush, and the room term above already stops it
+  // from overfilling, so the cap has nothing left to protect there -- it just
+  // throttles. Its value works out at 0.45 * here * uDeplete / uHold, and for
+  // a 2" brush that is about two per cent of a load per pass NO MATTER how
+  // deep the pile is, which is why raising the flooding rate changed nothing
+  // until this came off: the cap, not the rate, was the binding constraint.
+  float cap = 0.45 * here * uDeplete / max(uHold, 1e-4);
+  return mix(min(amt, cap), amt, uPalette);
 }
 
 // The SAME transfer, said in the canvas's units. It has to be derived from the
@@ -461,7 +498,12 @@ void main() {
   float bristle = catchBristle(mask.r);
   float cover = mask.g;
 
-  res.a = max(res.a - uDryOut, 0.0);
+  // Paint does not dry on a palette while you are mixing on it -- the whole
+  // board is wet, and the tool is in it. Charging dryOut there made a longer
+  // drag end with LESS on the brush than a short one: +/-20px gave 0.008 and
+  // +/-110px gave 0.000, because the extra distance was spent off the pile
+  // losing what had just been picked up.
+  res.a = max(res.a - uDryOut * (1.0 - uPalette), 0.0);
   if (cover <= 0.003) { outReservoir = res; return; }
 
   vec2 px = brushToCanvas(vUV);
@@ -706,20 +748,6 @@ void main() {
   float ceiling = max(uMaxVolume, uPalette * PALETTE_MAX_VOLUME);
   float volume = clamp(remain + give, 0.0, ceiling);
 
-  // A palette does not run out. This is a simulation, and having to squeeze
-  // more paint because you used some buys nothing: nobody is short of cadmium
-  // yellow here, and being made to re-stock mid-mixture is pure friction in
-  // the one place the tool is supposed to feel generous. So the board keeps
-  // whatever depth it had -- the tube pile is bottomless, and a mixture you
-  // worked up stays there to reload from as long as you want it.
-  //
-  // This floor is only about DEPTH. Paint still transfers in both directions
-  // above it: the brush loads from a pile, a streak still pulls out of one, a
-  // mixture still moves as you work it, and the colour here still changes.
-  // The pile simply does not shrink while it happens. Taking the floor away
-  // to make streaks work was the wrong lever -- streaks come from give and
-  // from pickup, neither of which this touches.
-  if (uPalette > 0.5) volume = max(volume, paint.a);
 
   float height = surf.r - take * 0.9 + give * uBody * 0.85 * (0.78 + 0.38 * bristle);
   height = mix(height, height * 0.35, uLevel * contact);
@@ -759,6 +787,19 @@ void main() {
       height = mix(height, (sa.r + sb.r + sc.r + sd.r) * 0.25, k);
     }
   }
+
+  // A palette does not run out. This is a simulation, and having to squeeze
+  // more paint because you used some buys nothing: nobody here is short of
+  // cadmium yellow, and being made to re-stock mid-mixture is pure friction
+  // in the one place the tool should feel generous.
+  //
+  // This has to come AFTER the softening above, not before it. Every brush
+  // carries a little soften, and that step averages volume with its
+  // neighbours -- so at the edge of a pile, where the neighbours are bare
+  // board, it pulled the pile down again a few passes later and the floor
+  // above it did nothing. Measured: a pile at depth 5 was down to 4.07 after
+  // eight passes with the floor supposedly holding it.
+  if (uPalette > 0.5) volume = max(volume, paint.a);
 
   outPaint = vec4(colour, volume);
   outSurf = vec4(height, wetness, body, surf.a);
@@ -990,6 +1031,7 @@ uniform float uBody;
 uniform float uWetness;
 uniform float uClearMix;
 uniform float uSeed;
+uniform float uReplace;   // 1 = re-assert a tube pile rather than mix into it
 
 layout(location = 0) out vec4 outPaint;
 layout(location = 1) out vec4 outSurf;
@@ -1006,6 +1048,23 @@ void main() {
 
   float m = smoothstep(1.0, 0.72, r);
   if (m <= 0.001) { outPaint = paint; outSurf = surf; return; }
+
+  // Re-asserting a pile rather than squeezing a fresh one onto what is there.
+  // A tube pile is a SOURCE: you go back to it for more of that colour, and
+  // it has to still be that colour when you do. Dragging a loaded brush
+  // through one contaminates it -- measured, a phthalo blue pile came back
+  // 0.35,0.70,0.18, which is a green -- so after a stroke the piles are laid
+  // down again. Mixing into it is exactly what must NOT happen here, or the
+  // restore inherits the contamination it is meant to undo.
+  //
+  // Only within the pile's own footprint, and only upward in depth, so a
+  // mixture worked up next to a pile is never touched.
+  if (uReplace > 0.5) {
+    outPaint = vec4(mix(paint.rgb, uColour, m), max(paint.a, uAmount * m));
+    outSurf = vec4(max(surf.r, pow(m, 0.55) * uBody * 0.9), max(surf.g, uWetness),
+                   mix(surf.b, uBody, m), surf.a);
+    return;
+  }
 
   float give = uAmount * m * (1.0 - uClearMix);
   vec3 colour = paint.rgb;

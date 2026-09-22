@@ -219,6 +219,13 @@ node tools/probe.mjs                    # what the simulation does, in numbers
 python3 tools/compare.py out/run-01/final.png reference.jpg out/cmp
 ```
 
+`docs/example.jpg` is a painting made in this studio, by hand, with these
+brushes — it is what the tool can already do in someone's hands, and it doubles
+as the test picture for the picture-to-painting mode. It replaced a screenshot
+of the tool's own flat output, which was a poor stand-in: real paint has soft
+gradients, broken edges and canvas texture, and a posterised synthetic image
+exercises none of them.
+
 `strokes.mjs` measures how the picture-to-painting mode lays strokes — whether
 a stroke stays on the one thing in the picture it started on, and whether it is
 still long enough to read as brushwork rather than scribble. That logic is pure
