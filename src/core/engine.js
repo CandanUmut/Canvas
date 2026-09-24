@@ -178,7 +178,16 @@ export class Engine {
    * `region` is the part of the bristle bed going into the paint, in 0..1
    * bristle space: {x0, y0, x1, y1}. The whole bed by default.
    */
-  loadBrush(colour, tint, load, replace = true, opacity = 1, region = null) {
+  /**
+   * `partial` says whether a region is a deliberate partial dip -- one side of
+   * a fan in one colour, the other side in another -- or simply where this
+   * tool always carries its paint, like the roll along a knife's edge. Only
+   * the first makes the brush two-tone. It defaults to "any region is
+   * partial", which was the only case there was until knives began loading
+   * along their edge -- and that default is what made every knife two-tone,
+   * and a two-tone brush is never reloaded.
+   */
+  loadBrush(colour, tint, load, replace = true, opacity = 1, region = null, partial = !!region) {
     const gl = this.gl;
     const mask = this.maskTexture(this.tool);
     const r = region || { x0: -0.1, y0: -0.1, x1: 1.1, y1: 1.1 };
@@ -198,7 +207,7 @@ export class Engine {
     // A partial dip leaves the rest of the bed as it was, so the cached colour
     // is no longer the whole story; sampleReservoir is what tells the truth
     // about a tool carrying two colours.
-    if (!region) {
+    if (!partial) {
       this.brush.colour = colour;
       this.brush.tint = tint;
       this.brush.opacity = opacity;
@@ -212,14 +221,19 @@ export class Engine {
   }
 
   /** Remember the paint the user picked, so reloads come back to it. */
-  setStock(colour, tint, opacity) {
-    this.brush.stock = { colour: colour.slice(), tint, opacity };
+  setStock(colour, tint, opacity, region = null) {
+    this.brush.stock = { colour: colour.slice(), tint, opacity, region };
   }
 
   /** Whatever is on the bristles right now becomes the charged colour. */
   stockFromBrush() {
     const b = this.brush;
-    b.stock = { colour: b.colour.slice(), tint: b.tint, opacity: b.opacity };
+    // What you mixed on the palette is one colour you chose. It goes back on
+    // the tool where the tool normally carries paint -- the edge, for a knife
+    // -- and it is not a two-tone load, whatever the bristles happened to be
+    // doing before.
+    b.stock = { colour: b.colour.slice(), tint: b.tint, opacity: b.opacity, region: (this.tool && this.tool.dipRegion) || null };
+    b.twoTone = false;
   }
 
   /** "Beat the devil out of it." */
@@ -248,7 +262,7 @@ export class Engine {
     if (keepDirty) {
       // Keep whatever the tool dragged up; just top the amount back up.
       if (b.load >= 0.92) return false;
-      this.loadBrush(b.colour, b.tint, 1, true, b.opacity);
+      this.loadBrush(b.colour, b.tint, 1, true, b.opacity, (b.stock && b.stock.region) || null, false);
       return true;
     }
     // Auto-clean: every stroke starts with the colour you chose. Gating this
@@ -268,7 +282,11 @@ export class Engine {
     // 1.0 for ever, so the tool was never topped up again, ran itself down and
     // started lifting paint instead of laying it.
     if (!b.dirty && b.load >= 0.99 && sameColour(b.colour, s.colour)) return false;
-    this.loadBrush(s.colour, s.tint, 1, true, s.opacity);
+    // Back where this tool carries its paint -- for a knife, a fresh roll along
+    // the edge. Reloading onto the whole blade instead would put paint on the
+    // flat, which is not how a knife is loaded; not reloading at all is what
+    // every knife did until this: one stroke, then dry for good.
+    this.loadBrush(s.colour, s.tint, 1, true, s.opacity, s.region || null, false);
     return true;
   }
 
@@ -357,6 +375,7 @@ export class Engine {
         uScrape: d.scrape,
         uClearMix: d.clearMix,
         uOpacity: d.opacity,
+        uChurn: tool.churn ?? 1,
         uSmudge: d.smudge,
         uSmudgeR: Math.max(1, d.size * 0.055),
       });

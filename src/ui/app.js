@@ -45,7 +45,11 @@ const state = {
   useTilt: false,
   flowScale: 1,
   blendScale: 1,
-  autoReload: true,
+  // Off: a brush runs down as you paint and you dip it again, which is how a
+  // sky gets lighter as it comes down the canvas. Knives refill per stroke
+  // regardless (reloadEachStroke) -- a fresh roll for every pull. On, this
+  // refills every tool at every stroke, for anyone who wants bottomless paint.
+  autoReload: false,
   dirtyBrush: false,
   thinner: 0,
   zoomMode: 'fit',
@@ -158,7 +162,13 @@ function boot() {
   buildSurfaceSliders();
   buildLessons();
   wireTopBar();
-  wirePointer($('easel'), () => canvasSurface, { palette: false });
+  // The whole stage, not just the canvas: sweeping in from off the edge is
+  // how a sky, a lake or a knife pull down a mountain is normally started, and
+  // a press that landed in the margin used to be ignored outright -- so the
+  // stroke never began, even once the brush was well onto the canvas.
+  // Positions are still measured against the canvas, and simply fall outside
+  // 0..1 while the brush is off it; the engine clips a footprint at the edge.
+  wirePointer($('stage'), () => canvasSurface, { palette: false, rectEl: $('easel') });
   wirePointer($('palette-slot'), () => paletteSurface, { palette: true });
   wireKeyboard();
 
@@ -556,8 +566,13 @@ function selectPaint(id, { squeezeOnly = false } = {}) {
     return;
   }
   const region = dipRegion();
-  engine.loadBrush(hexToRgb(paint.hex), paint.tint, 1, !region, paint.opacity, region);
-  if (!region) engine.setStock(hexToRgb(paint.hex), paint.tint, paint.opacity);
+  // Only a dip you CHOSE -- left, right, edge -- is a partial one. A knife's
+  // own region is simply where a knife carries its paint, and treating it as a
+  // two-colour dip meant no colour was remembered to reload from and reloading
+  // was refused: every knife ran dry after one stroke and stayed dry.
+  const partial = state.dip !== 'all';
+  engine.loadBrush(hexToRgb(paint.hex), paint.tint, 1, !partial, paint.opacity, region, partial);
+  if (!partial) engine.setStock(hexToRgb(paint.hex), paint.tint, paint.opacity, region);
   engine.sampleReservoir();
   updateBrushState({ colour: hexToRgb(paint.hex), load: 1 });
   toast(region ? `${paint.name} on the ${state.dip === 'tip' ? 'edge' : state.dip}. Dip the other side in something else.` : paint.note);
@@ -720,6 +735,21 @@ function buildToolSliders() {
       },
       format: fmtSize,
     }),
+    // Next to Size, always in view. Half of Bob's instructions are about how
+    // hard to press -- "just barely touch", "firm pressure", "let it break" --
+    // and with a mouse this slider is the only way to say any of them. It used
+    // to live inside the collapsed Brush behaviour panel, which is to say
+    // most people painting with a mouse never found it.
+    slider($('size-slider'), {
+      key: 'pressure',
+      label: 'Pressure',
+      min: 0.05,
+      max: 1,
+      step: 0.01,
+      get: () => state.pressure,
+      set: (v) => (state.pressure = v),
+      format: (v) => (v < 0.25 ? `${Math.round(v * 100)}% — barely touching` : v > 0.8 ? `${Math.round(v * 100)}% — firm` : `${Math.round(v * 100)}%`),
+    }),
   ];
 
   const host = $('tool-sliders');
@@ -756,16 +786,6 @@ function buildToolSliders() {
       format: (v) => (v < 0.02 ? 'none' : `${Math.round(v * 100)}%`),
     }),
     slider(host, {
-      key: 'pressure',
-      label: 'Pressure',
-      min: 0.05,
-      max: 1,
-      step: 0.01,
-      get: () => state.pressure,
-      set: (v) => (state.pressure = v),
-      format: (v) => `${Math.round(v * 100)}%`,
-    }),
-    slider(host, {
       key: 'angle',
       label: 'Brush angle',
       min: 0,
@@ -779,8 +799,8 @@ function buildToolSliders() {
       format: (v) => `${Math.round(v)}°`,
     }),
     checkbox(host, {
-      label: 'Reload the brush at the start of each stroke',
-      title: 'How real brushes work. Turn it off to make the paint run out for good.',
+      label: 'Refill the brush at every stroke',
+      title: 'Off, a brush runs down as you paint and you dip it again -- which is how a sky gets lighter as it comes down. Knives always get a fresh roll per stroke. On, every tool refills at every stroke.',
       get: () => state.autoReload,
       set: (v) => (state.autoReload = v),
     }),
@@ -967,6 +987,7 @@ const cursorAt = { x: -1e4, y: -1e4 };
 const paletteAt = { x: -1e4, y: -1e4 };
 let strokeAngleDeg = 0;
 let activePointer = null;
+let warnedDry = false;
 let penIsDown = false;
 let panning = null;
 
@@ -1006,9 +1027,13 @@ function settingsFor(ev) {
   };
 }
 
-function wirePointer(el, getSurface, { palette }) {
+function wirePointer(el, getSurface, { palette, rectEl = el }) {
   el.addEventListener('pointerdown', (ev) => {
     if (activePointer !== null) return;
+    // The stage also holds the first-run card, the toast and the cursor.
+    // Pressing a button there is pressing a button, not starting a stroke.
+    if (ev.target !== el && ev.target !== rectEl &&
+        ev.target.closest('button, a, input, select, label, .firstrun, .toast, .menu')) return;
     // Palm rejection: once a pen is in play, ignore stray touches.
     if (penIsDown && ev.pointerType === 'touch') return;
     if (ev.pointerType === 'pen') penIsDown = true;
@@ -1023,7 +1048,7 @@ function wirePointer(el, getSurface, { palette }) {
     if (ev.button !== 0 && ev.pointerType === 'mouse') return;
 
     const surface = getSurface();
-    const pt = surfacePoint(ev, el, surface);
+    const pt = surfacePoint(ev, rectEl, surface);
 
     if (ev.altKey || TOOLS_BY_ID[state.toolId].pick) {
       pickColourAt(surface, pt, { palette });
@@ -1036,7 +1061,8 @@ function wirePointer(el, getSurface, { palette }) {
     // Real brushes get recharged before every stroke. Not doing this was the
     // main reason the tool felt permanently empty. It tops the load back up
     // without changing the colour, so a mixture you made survives.
-    if (state.autoReload && !palette && !TOOLS_BY_ID[state.toolId].noLoad) {
+    const tool = TOOLS_BY_ID[state.toolId];
+    if ((state.autoReload || tool.reloadEachStroke) && !palette && !tool.noLoad) {
       engine.rechargeBrush(state.dirtyBrush);
     }
     engine.pushHistory(surface);
@@ -1066,7 +1092,7 @@ function wirePointer(el, getSurface, { palette }) {
     // which is what keeps a fast stroke smooth instead of polygonal.
     const events = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
     for (const e of events.length ? events : [ev]) {
-      stroke.extend(surfacePoint(e, el, surface), inputFrom(e), settings);
+      stroke.extend(surfacePoint(e, rectEl, surface), inputFrom(e), settings);
     }
     needsRender = true;
   });
@@ -1083,6 +1109,15 @@ function wirePointer(el, getSurface, { palette }) {
     stroke.end();
     scheduleSave();
     const r = engine.sampleReservoir();
+    // Brushes run down now. Say so once when one does, since nothing else
+    // does -- the meter is easy to miss while you are looking at the canvas.
+    const t = TOOLS_BY_ID[state.toolId];
+    if (!palette && !t.noLoad && !t.reloadEachStroke && !state.autoReload) {
+      if (r.load < 0.06 && !warnedDry) {
+        warnedDry = true;
+        toast('The brush has run dry. Tap a colour, or dip into the palette, to load it again.');
+      } else if (r.load > 0.2) warnedDry = false;
+    }
     // Mixing on the palette is how you choose a colour, so whatever comes off
     // the board becomes the charged colour for the canvas.
     if (palette) {
@@ -1554,6 +1589,15 @@ function wireKeyboard() {
         refreshToolSliders();
         break;
       }
+      case '{':
+      case '}': {
+        // Shift + the size keys: the other thing you adjust between strokes.
+        const next = Math.max(0.05, Math.min(1, state.pressure + (ev.key === '{' ? -0.1 : 0.1)));
+        state.pressure = Math.round(next * 100) / 100;
+        refreshToolSliders();
+        toast(`Pressure ${Math.round(state.pressure * 100)}%${state.pressure < 0.25 ? ' — barely touching' : state.pressure > 0.8 ? ' — firm' : ''}`);
+        break;
+      }
       case 'c':
       case 'C':
         $('btn-clean-brush').click();
@@ -1702,7 +1746,10 @@ function makeScript() {
       // Subdivide finely enough for the canvas actually being painted.
       const pts = path(points, { ...opts, step: (opts.step ?? 6) / Math.max(k(), 0.35) });
       const input = { pointerType: 'mouse', pressure: 0.5, tiltX: 0, tiltY: 0 };
-      if (opts.autoReload !== false && state.autoReload && !s.tool.noLoad) {
+      // Written paintings were written against a brush refilled every stroke,
+      // so a script keeps that unless it says otherwise -- independent of the
+      // checkbox, which is about how a PERSON wants their brush to behave.
+      if (opts.autoReload !== false && !s.tool.noLoad) {
         engine.rechargeBrush(state.dirtyBrush);
       }
       // A replay has nothing to undo back to, and a snapshot per stroke is by

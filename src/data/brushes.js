@@ -330,7 +330,13 @@ export function rasterizeMask(fn, res = MASK_RES, softness = 0.055) {
 // bleed    how freely paint spreads sideways through the bristle bed. High for
 //          soft brushes, which homogenise into one mixed colour; near zero for
 //          a steel blade, which genuinely does not
-// dryOut   fill-fraction lost per footprint-length travelled
+// dryOut   fill-fraction lost per footprint-length travelled, over and above
+//          the paint actually laid. It was set as high as the laying rate
+//          itself -- a fan brush lost 0.14 a footprint to this and laid only
+//          0.11 -- so every bristle brush lost at least half its load to
+//          nothing, and a 2" brush full of phthalo was dry after one stroke.
+//          Oil paint does not dry on a brush in the span of a stroke; bristle
+//          brushes keep a token amount.
 // spacing  dab spacing as a fraction of tool size
 // aspect   footprint height / width
 
@@ -393,7 +399,7 @@ export const TOOLS = [
     inches: 2.0,
     range: [0.5, 5.0],
     hold: 16.0,
-    flow: 0.75,
+    flow: 0.4,
     pickup: 4.0,
     knee: 0.3,
     soak: 0.9,
@@ -404,8 +410,8 @@ export const TOOLS = [
     cut: 0.1,
     angleJitter: 0.035,
     smudge: 0.05,
-    soften: 0.3,
-    dryOut: 0.05,
+    soften: 1.5,
+    dryOut: 0.005,
     aspect: 0.55,
     spacing: 0.05,
     body: 0.8,
@@ -433,8 +439,8 @@ export const TOOLS = [
     cut: 0.1,
     angleJitter: 0.035,
     smudge: 0.05,
-    soften: 0.3,
-    dryOut: 0.06,
+    soften: 1.2,
+    dryOut: 0.005,
     aspect: 0.58,
     spacing: 0.055,
   }),
@@ -461,7 +467,7 @@ export const TOOLS = [
     cut: 0.4,
     angleJitter: 0.22,
     soften: 0.22,
-    dryOut: 0.14,
+    dryOut: 0.005,
     aspect: 0.62,
     spacing: 0.068,
     body: 0.95,
@@ -490,7 +496,7 @@ export const TOOLS = [
     cut: 0.34,
     angleJitter: 0.6,
     soften: 0.22,
-    dryOut: 0.16,
+    dryOut: 0.005,
     aspect: 1.0,
     spacing: 0.075,
     body: 0.95,
@@ -518,7 +524,7 @@ export const TOOLS = [
     angleJitter: 0.14,
     smudge: 0.04,
     soften: 0.26,
-    dryOut: 0.09,
+    dryOut: 0.005,
     aspect: 1.3,
     spacing: 0.068,
     followStroke: true,
@@ -546,7 +552,7 @@ export const TOOLS = [
     angleJitter: 0.04,
     smudge: 0.05,
     soften: 0.3,
-    dryOut: 0.07,
+    dryOut: 0.005,
     aspect: 1.0,
     spacing: 0.062,
   }),
@@ -573,7 +579,7 @@ export const TOOLS = [
     cut: 0.08,
     angleJitter: 0.02,
     soften: 0.12,
-    dryOut: 0.1,
+    dryOut: 0.005,
     aspect: 5.0,
     spacing: 0.038,
     body: 0.55,
@@ -602,7 +608,7 @@ export const TOOLS = [
     cut: 0.26,
     angleJitter: 0.5,
     soften: 0.16,
-    dryOut: 0.11,
+    dryOut: 0.005,
     aspect: 1.0,
     spacing: 0.068,
     followStroke: false,
@@ -613,6 +619,10 @@ export const TOOLS = [
     // by burying the whole blade. That roll is what lets one pull lay a clean
     // plane and then run out into broken rock, and it is how the blade keeps a
     // hard edge on the side that is cutting.
+    reloadEachStroke: true,
+    // A blade presses stiff paint onto the wet film rather than stirring it
+    // in, so what it lays keeps its own colour. See hidingPowerChurn.
+    churn: 0.25,
     dipRegion: { x0: -0.1, y0: -0.1, x1: 1.1, y1: 0.38 },
     splay: 0.0,
     name: '#10 Painting Knife',
@@ -660,6 +670,10 @@ export const TOOLS = [
     // by burying the whole blade. That roll is what lets one pull lay a clean
     // plane and then run out into broken rock, and it is how the blade keeps a
     // hard edge on the side that is cutting.
+    reloadEachStroke: true,
+    // A blade presses stiff paint onto the wet film rather than stirring it
+    // in, so what it lays keeps its own colour. See hidingPowerChurn.
+    churn: 0.25,
     dipRegion: { x0: -0.1, y0: -0.1, x1: 1.1, y1: 0.38 },
     splay: 0.0,
     name: '#5 Painting Knife',

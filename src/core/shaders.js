@@ -287,7 +287,15 @@ uniform float uOpacity;   // 0 = pure glaze, 1 = buries what is underneath
 // "under" is how much paint is already there. A thin film cannot bury a
 // thick pile -- without that term one pass of a white brush turned a pile of
 // Phthalo Blue on the palette 88% white, so mixing ran backwards.
-float hidingPower(float give, float under, float wet) {
+// Churn is how much the tool stirs wet paint into what it lays. Bristles
+// churn: they drag through the wet film and the two intermix, which is the
+// whole of wet-on-wet. A knife does not: it presses stiff paint ON TOP of the
+// wet film and slides off. The 0.70 below used to be a single figure trying to
+// serve both -- a compromise between brushes blending into Liquid White and a
+// knife getting snow onto a mountain -- and it served neither: midnight black
+// pulled on with a knife came out mid-grey, [0.58], because it was being
+// blended into the white as if bristles had worked it in.
+float hidingPowerChurn(float give, float under, float wet, float churn) {
   // Hiding power is what a film of paint does to a layer that has SET. Over
   // paint that is still wet the two do not stack, they intermix -- which is
   // the whole of wet-on-wet, and the reason a coat of Liquid White goes down
@@ -299,7 +307,7 @@ float hidingPower(float give, float under, float wet) {
   // pressing a roll of Titanium White onto a wet dark mountain -- does sit on
   // top of what is under it, and at 0.85 snow could not be got onto a mountain
   // at all: one pull moved it 18% towards white and the peak stayed navy.
-  float o = uOpacity * uOpacity * (1.0 - 0.70 * clamp(wet, 0.0, 1.0));
+  float o = uOpacity * uOpacity * (1.0 - 0.70 * churn * clamp(wet, 0.0, 1.0));
   // A thin film cannot bury a thick pile. Without this, one pass of a white
   // brush turned a whole pile of Phthalo Blue on the palette 88% white and
   // mixing ran backwards. But the reference depth matters: a canvas carries
@@ -312,6 +320,12 @@ float hidingPower(float give, float under, float wet) {
   // anything, which is why white never read as white and nothing was ever dark.
   float resist = max(0.0, under - 1.6) * 0.45;
   return (1.0 - exp(-give * o * 4.5)) * (give / (give + resist + 1e-4));
+}
+
+// Everything that is not a tool laying paint -- the base coat, a squeezed pile
+// -- keeps the behaviour it was calibrated with.
+float hidingPower(float give, float under, float wet) {
+  return hidingPowerChurn(give, under, wet, 1.0);
 }
 `;
 
@@ -663,6 +677,7 @@ uniform sampler2D uPaint;
 uniform sampler2D uSurf;
 uniform sampler2D uReservoir;
 uniform sampler2D uBristle;
+uniform float uChurn;     // how much the tool stirs wet paint in: 1 bristles, low for a knife
 
 uniform float uCanvasTint;
 uniform float uBrushTint;
@@ -738,7 +753,7 @@ void main() {
     colour = (remain <= 0.0005)
       ? res.rgb
       : mixPaint(paint.rgb, uCanvasTint, res.rgb, uBrushTint, colourGive / (film + colourGive));
-    colour = mix(colour, res.rgb, hidingPower(colourGive, film, surf.g));
+    colour = mix(colour, res.rgb, hidingPowerChurn(colourGive, film, surf.g, uChurn));
   }
 
   // uMaxVolume is how much paint a MARK can hold -- a property of the tool
