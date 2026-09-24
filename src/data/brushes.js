@@ -662,7 +662,13 @@ export const TOOLS = [
     maxVolume: 2.4,
     followStroke: true,
     pressureSize: 0.15,
-    pressureFlow: 0.80,
+    // Pressure changes how much of the knife touches, far more than how much
+    // paint leaves it where it does. A roll of white drawn lightly down a
+    // dark mountain catches the high points and leaves them FULL white --
+    // that is Bob's snow. At 0.80 a light pull laid 36% of its paint at every
+    // point it touched, and the snow came out a grey veil: the brightest
+    // tenth reached lightness 0.58. At 0.25 it reaches 0.78, and breaks more.
+    pressureFlow: 0.25,
   }),
   tool({
     id: 'knife-5',
@@ -671,6 +677,7 @@ export const TOOLS = [
     // plane and then run out into broken rock, and it is how the blade keeps a
     // hard edge on the side that is cutting.
     reloadEachStroke: true,
+    pressureFlow: 0.25,   // as the No. 10: see there
     // A blade presses stiff paint onto the wet film rather than stirring it
     // in, so what it lays keeps its own colour. See hidingPowerChurn.
     churn: 0.25,
