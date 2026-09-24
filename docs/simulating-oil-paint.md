@@ -3,7 +3,7 @@
 ### What we re-implemented, what we had to add, and what only measurement could have told us
 
 *A technical report on the paint model behind this studio. Notes from building
-it, in the hope they save someone else the same bugs.*
+it, in the hope they save someone else the same seven bugs.*
 
 ---
 
@@ -24,7 +24,7 @@ so than dress it up.
 
 What we think is worth contributing is narrower and, we hope, more useful:
 
-1. **Fourteen specific ways an implementation of these papers can be wrong** while
+1. **Seven specific ways an implementation of these papers can be wrong** while
    still compiling, still running at 60fps, and still looking broadly like
    paint. Each one we shipped. Each one we found by measuring, not by reading.
 2. **A measurement methodology** for a painting simulator, where the output is
@@ -379,8 +379,7 @@ something is wrong with the darks.
 and extension do not need the simulator to run — they are arithmetic over the
 target picture. Lifting that out into a harness that answers in seconds rather
 than painting a whole picture for half an hour is the difference between trying
-one idea and trying twelve, and twelve is what it took. (That harness measured
-the first picture-to-painting planner; its successor is `tools/plan.mjs`.)
+one idea and trying twelve, and twelve is what it took. `tools/strokes.mjs`.
 
 **5. Mark sheets.** Render every tool's mark under a standard set of
 conditions into a single contact sheet, and score the sameness of repeated
@@ -426,73 +425,16 @@ per-pass harness was by then fast enough to re-run on a whim. Both mistakes
 came from the same place: reasoning about the mechanism instead of measuring
 the outcome.
 
-### The harness is not the hand
-
-Every measurement above drives the simulator through a script: a stroke is a
-list of points handed straight to the stroke runner. That is fast, repeatable,
-and blind to everything a person goes through on the way there — where a press
-lands, what refills the brush, what pressure a mouse reports, which controls are
-even visible. We only found this by painting the same reference through the real
-interface: clicking the tool rail and the paint swatches, mixing by dragging on
-the palette, pointer events on the easel.
-
-The first twenty minutes of a Bob Ross painting could not be done by hand. None
-of the following showed up in any scripted test, because scripts step around
-every one of them:
-
-- **Strokes that start off the canvas never began.** Sweeping in from the edge
-  is how a sky, a lake or a knife pull is normally started; the easel ignored a
-  press outside itself, so sixteen blending passes changed not one pixel.
-- **The brush refilled itself at every press**, so it could never run down as
-  it came down the canvas — and running down is where Bob's sky gradient comes
-  from. Scripts refill deliberately, so they never noticed.
-- **Every knife ran dry after one stroke and never refilled.** A knife loads
-  along its edge; an edge load was bookkept as a deliberate two-colour dip; a
-  two-tone brush is never reloaded. Scripts dip the knife explicitly before
-  each stroke.
-- **Pressure was hidden** in a collapsed panel — the one control a mouse user
-  has for "barely touch" versus "firm".
-
-And one that scripts *did* suffer from but masked with their refills: **every
-bristle brush lost at least half its load to a per-footprint "evaporation"**
-set as high as the laying rate itself. The fan brush lost more paint to nothing
-than it put on the canvas. A script that refills every stroke never runs a
-brush long enough to see it.
-
-The lesson generalises: **a harness that bypasses the input layer tests the
-engine, not the instrument.** For an instrument, the input layer is where half
-the failures live.
-
-### Calibrate against the gesture that would break it
-
-We also made a change tonight that measured well and was wrong. A sky test built
-from short criss-cross strokes improved markedly when the 2" brush was made to
-take up the wet ground strongly as it laid. We shipped it. The next test painted
-a long horizontal band, and the same change made the colour fade to white by
-halfway across while the brush still held most of its paint — worse than before
-we started. The short-stroke test could not have caught it, because a short
-stroke never runs long enough for the uptake to compound.
-
-Three other hypotheses tonight were tested and rejected before anything was
-changed, and are worth recording as negative results: that a rigid knife needed
-a harder contact threshold to make snow break (no measurable effect at three
-settings); that a sparse brush footprint was being under-pressed (none); that a
-brush's "knee" throttled light loads (every brush lays at full rate above a load
-of about 0.11). Each was plausible from the code. None was true of the output.
-
 ### The rule we would actually write down
 
 > Build the measurement before you touch the model. Every hour we spent on the
 > harness came back several times over. Every change we made by reasoning about
 > the code, without a number in front of us, was either wrong or neutral.
 
-We can be precise about this because we have the record. Of the first seven
-bugs, three were introduced by changes motivated by reading the shader and
-thinking hard about it. Measurement is not a guarantee either: one change was
-motivated by a measurement and was still wrong, because the measurement did not
-include the gesture that broke it (see "Calibrate against the gesture that would
-break it"). What measurement buys is that the error is caught at all, and
-quickly — that one was reverted within the hour.
+We can be precise about this because we have the record: of the changes in this
+document, the ones motivated by a measurement all survived. The ones motivated
+by reading the shader and thinking hard about it include three of the seven
+bugs.
 
 ---
 
@@ -510,13 +452,6 @@ we shipped and the measurement that caught it.
 | 5 | Unidirectionality applied to the palette | Palette became pickup-only; could not mix at all | A user. Then a scripted pointer-event reproduction |
 | 6 | Colour decoupling disabled where the tool is full | A full brush sealed shut; only ever paints the last colour clicked | Probe: drag a loaded brush through a contrasting pile, sample what it lays |
 | 7 | Colour exchange over-counted whatever the brush crossed while full | Every mixture in the app drifted toward whichever pigment was crossed last | Mix calibration: intended hex vs. measured, swept over the exchange rate |
-| 8 | Bristle brushes lost more paint to "drying out" than they laid | A 2" brush empty after one stroke; fan-brush trees impossible | Painting by hand: a sky that could not grade |
-| 9 | Brushes refilled at every press | A phthalo sky came out as flat tube colour | Painting by hand, then a probe with refilling on and off |
-| 10 | The easel ignored presses off its edge | Blending strokes started off the canvas did nothing at all | Painting by hand: before and after were pixel-identical |
-| 11 | An edge-loaded knife was bookkept as a two-colour dip | Every knife dry after one stroke, forever | Painting by hand: the mountain's body stayed bare |
-| 12 | One wet-hiding constant for bristles and blades | A knife blended into wet white like a brush | Probe: knife on wet white, per-tool churn |
-| 13 | Pressure cut a knife's paint as well as its contact | Snow a grey veil instead of breaking bright | Probe: brightness and break-up of snow at three pressures |
-| 14 | The fan's flow was set as if its footprint were dense | Evergreens nearly invisible on wet ground | Probe: one branch pull, fan against the 2" |
 
 Bug 7 deserves its own note, because it was the one with the widest blast
 radius, and because our first fix for it was wrong in an instructive way.
@@ -625,7 +560,7 @@ Stated plainly, because §0 promised it.
 - **Substrate as a first-class concept.** Canvas, palette, knife edge and rag
   are four different contact regimes, and we model them with one flag and some
   `mix()` calls. A model that took the contact regime as an input from the
-  start would be cleaner and would have prevented four of the first seven bugs.
+  start would be cleaner and would have prevented four of our seven bugs.
 - **Measured pigment basis.** IMPaSTo's eight-basis approach with real pigment
   data, if the performance can be found on a GPU we do not control.
 

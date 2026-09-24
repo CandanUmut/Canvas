@@ -305,9 +305,6 @@ body {
   grid-area: stage;
   position: relative;
   overflow: hidden;
-  /* Strokes can start in the margin now, so a finger dragged there has to
-     paint, not scroll or zoom the page. */
-  touch-action: none;
 }
 
 .easel {

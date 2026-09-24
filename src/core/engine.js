@@ -375,7 +375,6 @@ export class Engine {
         uScrape: d.scrape,
         uClearMix: d.clearMix,
         uOpacity: d.opacity,
-        uChurn: tool.churn ?? 1,
         uSmudge: d.smudge,
         uSmudgeR: Math.max(1, d.size * 0.055),
       });

@@ -330,13 +330,7 @@ export function rasterizeMask(fn, res = MASK_RES, softness = 0.055) {
 // bleed    how freely paint spreads sideways through the bristle bed. High for
 //          soft brushes, which homogenise into one mixed colour; near zero for
 //          a steel blade, which genuinely does not
-// dryOut   fill-fraction lost per footprint-length travelled, over and above
-//          the paint actually laid. It was set as high as the laying rate
-//          itself -- a fan brush lost 0.14 a footprint to this and laid only
-//          0.11 -- so every bristle brush lost at least half its load to
-//          nothing, and a 2" brush full of phthalo was dry after one stroke.
-//          Oil paint does not dry on a brush in the span of a stroke; bristle
-//          brushes keep a token amount.
+// dryOut   fill-fraction lost per footprint-length travelled
 // spacing  dab spacing as a fraction of tool size
 // aspect   footprint height / width
 
@@ -411,7 +405,7 @@ export const TOOLS = [
     angleJitter: 0.035,
     smudge: 0.05,
     soften: 0.3,
-    dryOut: 0.005,
+    dryOut: 0.05,
     aspect: 0.55,
     spacing: 0.05,
     body: 0.8,
@@ -440,7 +434,7 @@ export const TOOLS = [
     angleJitter: 0.035,
     smudge: 0.05,
     soften: 0.3,
-    dryOut: 0.005,
+    dryOut: 0.06,
     aspect: 0.58,
     spacing: 0.055,
   }),
@@ -458,11 +452,9 @@ export const TOOLS = [
     hold: 8.0,
     // A fan's footprint is a handful of separate bristle clusters -- only a
     // third of its outline is bristle, against half for the 2" -- so at a
-    // dense brush's flow it laid about a fifth as much paint per pull. A dark
-    // tree green pulled into wet Liquid White came out at lightness 0.78,
-    // and evergreens could not be painted by hand. Bob loads the fan "full of
-    // paint" and his trees go on dark. At 3.5 a pull lands at 0.53, in line
-    // with the 2" brush's 0.45 on the same test.
+    // dense brush's flow it laid about a fifth as much paint per pull, and
+    // evergreens came out as faint grey lines. Bob loads the fan "full of
+    // paint" and his trees go on dark.
     flow: 3.5,
     pickup: 3.0,
     knee: 0.35,
@@ -474,7 +466,7 @@ export const TOOLS = [
     cut: 0.4,
     angleJitter: 0.22,
     soften: 0.22,
-    dryOut: 0.005,
+    dryOut: 0.14,
     aspect: 0.62,
     spacing: 0.068,
     body: 0.95,
@@ -503,7 +495,7 @@ export const TOOLS = [
     cut: 0.34,
     angleJitter: 0.6,
     soften: 0.22,
-    dryOut: 0.005,
+    dryOut: 0.16,
     aspect: 1.0,
     spacing: 0.075,
     body: 0.95,
@@ -531,7 +523,7 @@ export const TOOLS = [
     angleJitter: 0.14,
     smudge: 0.04,
     soften: 0.26,
-    dryOut: 0.005,
+    dryOut: 0.09,
     aspect: 1.3,
     spacing: 0.068,
     followStroke: true,
@@ -559,7 +551,7 @@ export const TOOLS = [
     angleJitter: 0.04,
     smudge: 0.05,
     soften: 0.3,
-    dryOut: 0.005,
+    dryOut: 0.07,
     aspect: 1.0,
     spacing: 0.062,
   }),
@@ -586,7 +578,7 @@ export const TOOLS = [
     cut: 0.08,
     angleJitter: 0.02,
     soften: 0.12,
-    dryOut: 0.005,
+    dryOut: 0.1,
     aspect: 5.0,
     spacing: 0.038,
     body: 0.55,
@@ -615,7 +607,7 @@ export const TOOLS = [
     cut: 0.26,
     angleJitter: 0.5,
     soften: 0.16,
-    dryOut: 0.005,
+    dryOut: 0.11,
     aspect: 1.0,
     spacing: 0.068,
     followStroke: false,
@@ -626,10 +618,6 @@ export const TOOLS = [
     // by burying the whole blade. That roll is what lets one pull lay a clean
     // plane and then run out into broken rock, and it is how the blade keeps a
     // hard edge on the side that is cutting.
-    reloadEachStroke: true,
-    // A blade presses stiff paint onto the wet film rather than stirring it
-    // in, so what it lays keeps its own colour. See hidingPowerChurn.
-    churn: 0.25,
     dipRegion: { x0: -0.1, y0: -0.1, x1: 1.1, y1: 0.38 },
     splay: 0.0,
     name: '#10 Painting Knife',
@@ -669,13 +657,7 @@ export const TOOLS = [
     maxVolume: 2.4,
     followStroke: true,
     pressureSize: 0.15,
-    // Pressure changes how much of the knife touches, far more than how much
-    // paint leaves it where it does. A roll of white drawn lightly down a
-    // dark mountain catches the high points and leaves them FULL white --
-    // that is Bob's snow. At 0.80 a light pull laid 36% of its paint at every
-    // point it touched, and the snow came out a grey veil: the brightest
-    // tenth reached lightness 0.58. At 0.25 it reaches 0.78, and breaks more.
-    pressureFlow: 0.25,
+    pressureFlow: 0.80,
   }),
   tool({
     id: 'knife-5',
@@ -683,11 +665,6 @@ export const TOOLS = [
     // by burying the whole blade. That roll is what lets one pull lay a clean
     // plane and then run out into broken rock, and it is how the blade keeps a
     // hard edge on the side that is cutting.
-    reloadEachStroke: true,
-    pressureFlow: 0.25,   // as the No. 10: see there
-    // A blade presses stiff paint onto the wet film rather than stirring it
-    // in, so what it lays keeps its own colour. See hidingPowerChurn.
-    churn: 0.25,
     dipRegion: { x0: -0.1, y0: -0.1, x1: 1.1, y1: 0.38 },
     splay: 0.0,
     name: '#5 Painting Knife',
@@ -846,7 +823,6 @@ export const TOOLS = [
 
 
 export const TOOLS_BY_ID = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
-
 
 
 export const TOOL_CATEGORIES = [
