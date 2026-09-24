@@ -641,18 +641,18 @@ function dipRegion() {
 }
 
 /** Draw what is actually on the bristles, so a two-colour load is visible. */
-function drawBrushChip() {
+function drawBrushChip(fill = null) {
   const el = $('brush-chip');
   if (!el || !engine) return;
   const ctx = el.getContext('2d');
-  const img = engine.reservoirImage(el.width);
+  const img = engine.reservoirImage(el.width, fill);
   ctx.clearRect(0, 0, el.width, el.height);
   if (!img) return;
   ctx.putImageData(new ImageData(img.data, img.size, img.size), 0, 0);
 }
 
-function updateBrushState({ colour, load }) {
-  drawBrushChip();
+function updateBrushState({ colour, load, refilled = false }) {
+  drawBrushChip(refilled ? colour : null);
   $('brush-chip').style.setProperty('--c', rgbToHex(colour));
   // Load is a fill fraction now, so the meter needs no per-tool scaling and
   // finally reads true.
@@ -1116,7 +1116,15 @@ function wirePointer(el, getSurface, { palette }) {
       // before, or restoring would be what it picked up.
       restorePalettePiles();
     }
-    updateBrushState(r);
+    // With reloading on, the next stroke starts full, so show that rather than
+    // what was left at the end of this one. The meter used to show the dregs
+    // -- "empty" after any long stroke -- while the brush was about to refill.
+    const b = engine.brush;
+    if (!palette && state.autoReload && !t.noLoad && b.stock && !b.twoTone) {
+      updateBrushState({ colour: state.dirtyBrush ? r.colour : b.stock.colour, load: 1, refilled: true });
+    } else {
+      updateBrushState(r);
+    }
     needsRender = true;
   };
   el.addEventListener('pointerup', finish);
