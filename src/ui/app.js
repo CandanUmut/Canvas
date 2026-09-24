@@ -1237,7 +1237,6 @@ async function paintPicture(file) {
     engine.pushHistory(canvasSurface);
 
     await paintFromPicture(window.studio.script, { data, width: w, height: h }, {
-      inchesWide: canvasSurface.widthInches || 24,
       shouldStop: () => painting.stop,
       onProgress: (done, total, label) => {
         toast(done >= total ? 'Finished.' : `Painting — pass ${done + 1} of ${total}, ${label}`);
