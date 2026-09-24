@@ -236,14 +236,13 @@ of the tool's own flat output, which was a poor stand-in: real paint has soft
 gradients, broken edges and canvas texture, and a posterised synthetic image
 exercises none of them.
 
-`strokes.mjs` measures how the picture-to-painting mode lays strokes — whether
-a stroke stays on the one thing in the picture it started on, and whether it is
-still long enough to read as brushwork rather than scribble. That logic is pure
-arithmetic over the target image, so it runs offline in seconds instead of
-painting a whole picture in a browser for half an hour, which is the difference
-between trying one idea and trying twelve. Read its figures per pass: the final
-detail pass contributes several thousand two-point dabs by design and swamps
-any average taken across all of them.
+`plan.mjs` shows what the picture-to-painting mode would paint, and how — which
+brush goes where, in what order, how many dips of the brush — in about a second,
+and with an output path it draws the plan beside the picture. That is not what
+the paint will look like; the simulation blends and carries wet paint, which is
+the point. It shows the STRUCTURE: whether the shapes survive, whether strokes
+follow them, whether anything is left bare. Judging that used to take a
+half-hour browser run.
 
 `paint.mjs` replays a painting in a real browser and writes each stage out as
 it is painted. `probe.mjs` asks the questions a wet-on-wet painter cares about
