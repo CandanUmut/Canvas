@@ -456,7 +456,14 @@ export const TOOLS = [
     inches: 1.6,
     range: [0.3, 3.0],
     hold: 8.0,
-    flow: 0.89,
+    // A fan's footprint is a handful of separate bristle clusters -- only a
+    // third of its outline is bristle, against half for the 2" -- so at a
+    // dense brush's flow it laid about a fifth as much paint per pull. A dark
+    // tree green pulled into wet Liquid White came out at lightness 0.78,
+    // and evergreens could not be painted by hand. Bob loads the fan "full of
+    // paint" and his trees go on dark. At 3.5 a pull lands at 0.53, in line
+    // with the 2" brush's 0.45 on the same test.
+    flow: 3.5,
     pickup: 3.0,
     knee: 0.35,
     soak: 0.9,
@@ -840,39 +847,7 @@ export const TOOLS = [
 
 export const TOOLS_BY_ID = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
 
-/**
- * The dropper. Not a painting tool at all -- it takes a colour off the canvas
- * or the palette and charges the brush with it, the way the picker in any
- * paint program does.
- *
- * It exists as a TOOL rather than only as the alt-click it has always been,
- * because alt-click is invisible to anyone who has not been told about it and
- * impossible on a tablet, which is most of the people painting with this.
- *
- * The footprint is never used -- pointerdown picks and returns before a stroke
- * begins -- but setTool uploads a mask for whatever is selected, so it gets a
- * small round one rather than an undefined.
- */
-const PICKER = tool({
-  id: 'util-picker',
-  name: 'Colour Picker',
-  short: 'Pick',
-  rackName: 'Picker',
-  blurb:
-    'Take a colour straight off the painting and load the brush with it. ' +
-    'Picks the paint itself, not the lit and shaded pixel, so what you get ' +
-    'back is the pigment that is actually there. Alt-click does the same ' +
-    'thing with any tool in your hand.',
-  category: 'utility',
-  shape: roundMask(),
-  inches: 0.3,
-  range: [0.3, 0.3],
-  pick: true,
-  noLoad: true,
-  flow: 0.0,
-  pickup: 0.0,
-  soften: 0.0,
-});
+
 
 export const TOOL_CATEGORIES = [
   { id: 'brush', label: 'Brushes' },
