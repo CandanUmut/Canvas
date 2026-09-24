@@ -842,7 +842,8 @@ export class Engine {
    *
    * Call sampleReservoir first; this re-uses the buffer it read back.
    */
-  reservoirImage(out = 48) {
+  /** `fill`, an rgb, draws the bed as it will be once reloaded with that colour. */
+  reservoirImage(out = 48, fill = null) {
     const res = this.reservoir.a;
     const n = res.width;
     const buf = this._resBuf;
@@ -862,6 +863,13 @@ export class Engine {
           bristle = mask[(my * MASK_RES + mx) * 2 + 1] / 255;
         }
         const o = (y * out + x) * 4;
+        if (fill) {
+          px[o] = Math.round(fill[0] * 255);
+          px[o + 1] = Math.round(fill[1] * 255);
+          px[o + 2] = Math.round(fill[2] * 255);
+          px[o + 3] = Math.round(bristle * 255);
+          continue;
+        }
         px[o] = Math.round(Math.min(1, Math.max(0, buf[i * 4])) * 255);
         px[o + 1] = Math.round(Math.min(1, Math.max(0, buf[i * 4 + 1])) * 255);
         px[o + 2] = Math.round(Math.min(1, Math.max(0, buf[i * 4 + 2])) * 255);
