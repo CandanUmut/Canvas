@@ -556,11 +556,20 @@ function selectPaint(id, { squeezeOnly = false } = {}) {
     return;
   }
   const region = dipRegion();
-  engine.loadBrush(hexToRgb(paint.hex), paint.tint, 1, !region, paint.opacity, region);
-  if (!region) engine.setStock(hexToRgb(paint.hex), paint.tint, paint.opacity);
+  // Only a dip you CHOSE -- left, right, edge -- is a partial one. A knife's
+  // own region is simply where a knife carries its paint, and treating it as a
+  // two-colour dip meant no colour was remembered to reload from and reloading
+  // was refused: every knife ran dry after one stroke and stayed dry.
+  const partial = state.dip !== 'all';
+  engine.loadBrush(hexToRgb(paint.hex), paint.tint, 1, !partial, paint.opacity, region, partial);
+  if (!partial) engine.setStock(hexToRgb(paint.hex), paint.tint, paint.opacity, region);
   engine.sampleReservoir();
   updateBrushState({ colour: hexToRgb(paint.hex), load: 1 });
-  toast(region ? `${paint.name} on the ${state.dip === 'tip' ? 'edge' : state.dip}. Dip the other side in something else.` : paint.note);
+  // Name it. The swatches only carry their names on hover, so on a tablet
+  // there are none at all, and three of the darks -- Midnight Black, Prussian
+  // and Phthalo Blue -- are nearly the same dot. The toast used to show only
+  // the note, which says what a paint is FOR but not which one you picked.
+  toast(region ? `${paint.name} on the ${state.dip === 'tip' ? 'edge' : state.dip}. Dip the other side in something else.` : `${paint.name} — ${paint.note}`);
 }
 
 // The tube piles currently on the board. A pile is a SOURCE, not a mark: you
@@ -720,6 +729,21 @@ function buildToolSliders() {
       },
       format: fmtSize,
     }),
+    // Next to Size, always in view. Half of Bob's instructions are about how
+    // hard to press -- "just barely touch", "firm pressure", "let it break" --
+    // and with a mouse this slider is the only way to say any of them. It used
+    // to live inside the collapsed Brush behaviour panel, which is to say
+    // most people painting with a mouse never found it.
+    slider($('size-slider'), {
+      key: 'pressure',
+      label: 'Pressure',
+      min: 0.05,
+      max: 1,
+      step: 0.01,
+      get: () => state.pressure,
+      set: (v) => (state.pressure = v),
+      format: (v) => (v < 0.25 ? `${Math.round(v * 100)}% — barely touching` : v > 0.8 ? `${Math.round(v * 100)}% — firm` : `${Math.round(v * 100)}%`),
+    }),
   ];
 
   const host = $('tool-sliders');
@@ -754,16 +778,6 @@ function buildToolSliders() {
       get: () => state.thinner,
       set: (v) => (state.thinner = v),
       format: (v) => (v < 0.02 ? 'none' : `${Math.round(v * 100)}%`),
-    }),
-    slider(host, {
-      key: 'pressure',
-      label: 'Pressure',
-      min: 0.05,
-      max: 1,
-      step: 0.01,
-      get: () => state.pressure,
-      set: (v) => (state.pressure = v),
-      format: (v) => `${Math.round(v * 100)}%`,
     }),
     slider(host, {
       key: 'angle',
@@ -967,6 +981,7 @@ const cursorAt = { x: -1e4, y: -1e4 };
 const paletteAt = { x: -1e4, y: -1e4 };
 let strokeAngleDeg = 0;
 let activePointer = null;
+let warnedDry = false;
 let penIsDown = false;
 let panning = null;
 
@@ -1083,6 +1098,15 @@ function wirePointer(el, getSurface, { palette }) {
     stroke.end();
     scheduleSave();
     const r = engine.sampleReservoir();
+    // With reloading turned off a brush runs down. Say so once when one does,
+    // since nothing else does -- the meter is easy to miss while painting.
+    const t = TOOLS_BY_ID[state.toolId];
+    if (!palette && !t.noLoad && !state.autoReload) {
+      if (r.load < 0.06 && !warnedDry) {
+        warnedDry = true;
+        toast('The brush has run dry. Tap a colour, or dip into the palette, to load it again.');
+      } else if (r.load > 0.2) warnedDry = false;
+    }
     // Mixing on the palette is how you choose a colour, so whatever comes off
     // the board becomes the charged colour for the canvas.
     if (palette) {
@@ -1552,6 +1576,15 @@ function wireKeyboard() {
         const next = Math.max(tool.range[0], Math.min(tool.range[1], state.sizes[tool.id] * f));
         state.sizes[tool.id] = next;
         refreshToolSliders();
+        break;
+      }
+      case '{':
+      case '}': {
+        // Shift + the size keys: the other thing you adjust between strokes.
+        const next = Math.max(0.05, Math.min(1, state.pressure + (ev.key === '{' ? -0.1 : 0.1)));
+        state.pressure = Math.round(next * 100) / 100;
+        refreshToolSliders();
+        toast(`Pressure ${Math.round(state.pressure * 100)}%${state.pressure < 0.25 ? ' — barely touching' : state.pressure > 0.8 ? ' — firm' : ''}`);
         break;
       }
       case 'c':

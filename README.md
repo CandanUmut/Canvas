@@ -134,12 +134,13 @@ same thing without putting your brush down, and `i` reaches for it.
 |---|---|
 | `1`–`0` | pick a tool |
 | `[` `]` | brush size |
+| `{` `}` (`Shift`+`[` `]`) | pressure — "barely touching" to "firm" |
 | `C` | clean the brush ("beat the devil out of it") |
 | `Shift`+`D` | let it dry |
 | `Ctrl`+`Z` / `Ctrl`+`Shift`+`Z` | undo / redo |
 | `Ctrl`+`S` | save a PNG |
 | `+` `−` `F` | zoom in, out, fit |
-| `Alt`+click | pick a colour off the canvas |
+| `I`, or `Alt`+click | pick a colour off the canvas |
 | `V` (hold) | see it in grey — the squint test |
 | `Shift`+drag / middle-drag | pan |
 
