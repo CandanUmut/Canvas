@@ -575,7 +575,11 @@ function selectPaint(id, { squeezeOnly = false } = {}) {
   if (!partial) engine.setStock(hexToRgb(paint.hex), paint.tint, paint.opacity, region);
   engine.sampleReservoir();
   updateBrushState({ colour: hexToRgb(paint.hex), load: 1 });
-  toast(region ? `${paint.name} on the ${state.dip === 'tip' ? 'edge' : state.dip}. Dip the other side in something else.` : paint.note);
+  // Name it. The swatches only carry their names on hover, so on a tablet
+  // there are none at all, and three of the darks -- Midnight Black, Prussian
+  // and Phthalo Blue -- are nearly the same dot. The toast used to show only
+  // the note, which says what a paint is FOR but not which one you picked.
+  toast(region ? `${paint.name} on the ${state.dip === 'tip' ? 'edge' : state.dip}. Dip the other side in something else.` : `${paint.name} — ${paint.note}`);
 }
 
 // The tube piles currently on the board. A pile is a SOURCE, not a mark: you
@@ -1248,6 +1252,9 @@ async function paintPicture(file) {
     engine.pushHistory(canvasSurface);
 
     await paintFromPicture(window.studio.script, { data, width: w, height: h }, {
+      // Brush sizes are in inches, so the planner has to know how big the
+      // canvas is: a 2" brush on a 12" canvas is a sixth of the width.
+      inchesWide: canvasSurface.widthInches || 24,
       shouldStop: () => painting.stop,
       onProgress: (done, total, label) => {
         toast(done >= total ? 'Finished.' : `Painting — pass ${done + 1} of ${total}, ${label}`);
