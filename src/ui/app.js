@@ -211,7 +211,7 @@ function newCanvas(preset) {
   layout();
   needsRender = true;
   scheduleSave(400);
-  toast('Fresh canvas. Start with a Liquid White base coat — it is what makes everything blend.');
+  toast('Fresh canvas. Start with a white base coat — it is what makes everything blend.');
 }
 
 // --------------------------------------------------------------- layout ---

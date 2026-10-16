@@ -110,7 +110,7 @@ export class Engine {
     // `stock` is the paint the user actually chose -- a tube, or whatever they
     // mixed on the palette. `colour` drifts as the tool picks things up off the
     // canvas. Reloading has to come from stock: refilling from the drifted
-    // colour meant a brush that ran dry over Liquid White came back loaded with
+    // colour meant a brush that ran dry over white base came back loaded with
     // white, and every stroke after the first painted white on white.
     this.brush = { colour: [1, 1, 1], tint: 1, opacity: 1, load: 0, dirty: false, twoTone: false };
     this.brush.stock = { colour: [1, 1, 1], tint: 1, opacity: 1 };
@@ -236,13 +236,13 @@ export class Engine {
     b.twoTone = false;
   }
 
-  /** "Beat the devil out of it." */
+  /** Clean the brush: shake it out until it is empty. */
   cleanBrush() {
     this.loadBrush([0.97, 0.96, 0.94], 1, 0, true, 1);
     this.brush.load = 0;
     this.brush.dirty = false;
     this.brush.twoTone = false;
-    // A brush you have beaten the devil out of is EMPTY, and has to stay empty
+    // A brush you have cleaned is EMPTY, and has to stay empty
     // until you dip it again. Leaving the charged colour behind meant the next
     // stroke's reload filled it straight back up, so cleaning it did nothing at
     // all -- and cleaning it is how a sky gets blended, how the base of a
@@ -475,7 +475,7 @@ export class Engine {
 
   // --- whole-surface operations -------------------------------------------
 
-  /** Base coat: Liquid White, Liquid Black, or a flat wash of any colour. */
+  /** Base coat: white base, black base, or a flat wash of any colour. */
   fill(surface, { colour, tint = 1, amount = 0.6, wetness = 1, body = 0.2, replace = false, clearMix = 0, canvasTint = 1, opacity = 1 }) {
     const gl = this.gl;
     surface.scratch.bind();

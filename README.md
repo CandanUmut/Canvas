@@ -42,7 +42,7 @@ painting.
 
 ## Painting with it
 
-1. **Base coat first.** Pick *Liquid White* when you start. It keeps the
+1. **Base coat first.** Pick *White base* when you start. It keeps the
    canvas wet so everything you paint after it blends.
 2. **Pick a colour.** Tap a colour on the palette. That squeezes a fresh pile
    onto the board and loads your brush with it.

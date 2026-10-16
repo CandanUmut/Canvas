@@ -335,7 +335,7 @@ const treeDark = mixFor([['sap-green', 3], ['phthalo-blue', 2], ['midnight-black
   'brush-fan', 0.5);
 log('tree dark ', treeDark.hex);
 s.set({ pressure: 0.6 });
-// One tap of a fan brush moves wet Liquid White about a third of the way to
+// One tap of a fan brush moves wet white base about a third of the way to
 // the colour on the bristles -- which is right, and why a dark goes on in
 // several passes. Without them the band that the whole picture's value range
 // is measured against came out a pale scribble.

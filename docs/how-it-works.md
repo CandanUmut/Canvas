@@ -84,15 +84,15 @@ Van Dyke Brown, Dark Sienna, Alizarin Crimson, Sap Green, Phthalo Green,
 Phthalo Blue, Prussian Blue, Bright Red, Indian Yellow, Yellow Ochre, Cadmium
 Yellow, Titanium White.
 
-**Mediums** — Liquid White, Liquid Clear and Liquid Black as base coats or on
+**Mediums** — white base, clear base and black base as base coats or on
 the brush, plus an odorless thinner slider that turns any paint into something
 that flows off a liner brush.
 
 ## Painting with it
 
-1. **Base coat first.** *Base coat → Liquid White.* Almost every painting
+1. **Base coat first.** *Base coat → White base.* Almost every painting
    starts here; it is what keeps the canvas wet so everything blends. Use
-   Liquid Clear instead when you want to keep an area dark.
+   clear base instead when you want to keep an area dark.
 2. **Pick a colour.** Click a pigment on the palette board. That squeezes a
    fresh pile onto the board *and* loads your tool with it — one gesture.
    Shift-click to squeeze without loading.

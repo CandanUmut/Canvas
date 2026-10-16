@@ -13,7 +13,7 @@ export const LESSONS = [
     subtitle: 'The classic. Sky, a mighty mountain, evergreens and a still lake.',
     steps: [
       {
-        title: 'Liquid White the canvas',
+        title: 'A white base coat',
         tool: 'brush-2inch',
         baseCoat: 'liquid-white',
         text:
@@ -103,7 +103,7 @@ export const LESSONS = [
     subtitle: 'Snow, bare trees and a warm winter sky.',
     steps: [
       {
-        title: 'Liquid White, then a warm sky',
+        title: 'White base, then a warm sky',
         tool: 'brush-2inch',
         baseCoat: 'liquid-white',
         colours: ['alizarin-crimson', 'indian-yellow', 'titanium-white'],
@@ -149,10 +149,10 @@ export const LESSONS = [
   {
     id: 'seascape',
     title: 'Ocean Sunset',
-    subtitle: 'Waves, foam and a sky on fire. Liquid Black underneath.',
+    subtitle: 'Waves, foam and a sky on fire. A black base underneath.',
     steps: [
       {
-        title: 'Liquid Black base',
+        title: 'Black base coat',
         tool: 'brush-2inch',
         baseCoat: 'liquid-black',
         text: 'A dark wet base keeps the deep water deep. Thin and even.',

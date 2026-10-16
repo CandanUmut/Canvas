@@ -146,7 +146,7 @@ float vnoise(vec2 p) {
 
 // A cotton-duck weave: two thread directions, alternating which lies on top.
 // The peaks of this are what a dry brush skips across, and that skipping is
-// how Bob got sparkling highlights on a mountain with one stroke.
+// how a painter gets sparkling highlights on a mountain with one stroke.
 float weaveThreads(vec2 px) {
   vec2 t = px / max(uWeaveScale, 1.0);
   float over = step(0.5, fract((floor(t.x) + floor(t.y)) * 0.5));
@@ -290,7 +290,7 @@ uniform float uOpacity;   // 0 = pure glaze, 1 = buries what is underneath
 float hidingPower(float give, float under, float wet) {
   // Hiding power is what a film of paint does to a layer that has SET. Over
   // paint that is still wet the two do not stack, they intermix -- which is
-  // the whole of wet-on-wet, and the reason a coat of Liquid White goes down
+  // the whole of wet-on-wet, and the reason a coat of white base goes down
   // before anything else. Without this, one pass of Titanium White over a wet
   // dark blue sky left it 93% white although it laid barely a quarter of a
   // layer, so every stroke sat on the picture like a decal and "let it dry"
@@ -537,7 +537,7 @@ void main() {
   // Colour crosses over even when no paint does. A brush that is already full
   // still takes on what it is dragged through -- that is what makes wet-on-wet
   // work at all, and without it a freshly loaded brush stayed at tube strength
-  // no matter how much wet Liquid White it was pulled across.
+  // no matter how much wet white base it was pulled across.
   //
   // Both sides of this ratio have to be VOLUMES. Weighing paint picked up (in
   // layers) against the load (a fill fraction at most 1.0) overstated the
@@ -729,7 +729,7 @@ void main() {
   // further mark could say: a fan brush tapped onto a sky that had been worked
   // to a layer and a half moved it a seventh of the way to the colour on the
   // bristles, so a tree went on as a translucent haze with the sky showing
-  // through it, however many times it was tapped. Bob's trees go on dark in
+  // through it, however many times it was tapped. Real wet-on-wet trees go on dark in
   // one or two touches, because the paint on the bristles sits ON the sky --
   // it does not homogenise with every coat underneath.
   float film = min(remain, MIX_FILM);

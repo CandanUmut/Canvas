@@ -148,7 +148,7 @@ export const PIGMENTS = [
 export const MEDIUMS = [
   {
     id: 'liquid-white',
-    name: 'Liquid White',
+    name: 'White base',
     hex: '#fdfdfb',
     tint: 0.55,
     opacity: 0.50,
@@ -158,7 +158,7 @@ export const MEDIUMS = [
   },
   {
     id: 'liquid-clear',
-    name: 'Liquid Clear',
+    name: 'Clear base',
     hex: '#ffffff',
     tint: 0.0,
     opacity: 0.00,
@@ -169,7 +169,7 @@ export const MEDIUMS = [
   },
   {
     id: 'liquid-black',
-    name: 'Liquid Black',
+    name: 'Black base',
     hex: '#0b0b0d',
     tint: 0.6,
     opacity: 0.50,
