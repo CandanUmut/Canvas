@@ -13,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 // `wIn` is the canvas width in inches. Tools are sized in inches too, so a
 // 2" brush stays a 2" brush whatever resolution the canvas is.
 const CANVAS_PRESETS = [
-  { label: '24 × 18 in — landscape', note: "Bob's usual canvas", w: 1440, h: 1080, wIn: 24 },
+  { label: '24 × 18 in — landscape', note: 'The classic landscape size', w: 1440, h: 1080, wIn: 24 },
   { label: '18 × 24 in — portrait', note: 'Tall scenes, waterfalls', w: 1080, h: 1440, wIn: 18 },
   { label: '16 × 9 — widescreen', note: 'Sweeping vistas', w: 1600, h: 900, wIn: 24 },
   { label: '12 × 9 in — small & fast', note: 'Easiest on an older GPU', w: 1024, h: 768, wIn: 12 },
@@ -236,7 +236,10 @@ function layout() {
   const sh = stage.clientHeight;
   if (sw <= 0 || sh <= 0) return;
 
-  const fit = Math.min(sw / canvasSurface.width, sh / canvasSurface.height) * 0.93;
+  // On a phone every pixel of width counts, so the margin round the painting
+  // is trimmed there.
+  const margin = sw < 600 ? 0.97 : 0.93;
+  const fit = Math.min(sw / canvasSurface.width, sh / canvasSurface.height) * margin;
   const scale = state.zoomMode === 'fit' ? fit : state.zoom;
   state.zoom = scale;
 
@@ -520,8 +523,8 @@ function buildPalette() {
   const darks = $('dabs-darks');
   lights.innerHTML = '';
   darks.innerHTML = '';
-  // Bob's own layout: darks up the left, lights across the top. colors.js is
-  // already ordered that way.
+  // The traditional landscape-painter's layout: darks up the left, lights
+  // across the top. colors.js is already ordered that way.
   for (const pig of PIGMENTS) paintDab(pig, pig.dark === false ? lights : darks);
 
   const meds = $('mediums');
@@ -588,7 +591,7 @@ function forgetPalettePiles() {
 }
 
 function squeezeOntoPalette(paint) {
-  // Darks up the left edge, lights across the top -- Bob's own palette layout,
+  // Darks up the left edge, lights across the top -- the traditional layout,
   // and it keeps the middle of the board clear to mix in.
   const i = state.squeezeSlot % 12;
   state.squeezeSlot++;
@@ -729,8 +732,8 @@ function buildToolSliders() {
       },
       format: fmtSize,
     }),
-    // Next to Size, always in view. Half of Bob's instructions are about how
-    // hard to press -- "just barely touch", "firm pressure", "let it break" --
+    // Next to Size, always in view. Half of any wet-on-wet instruction is about
+    // how hard to press -- barely touching, firm pressure, letting it break --
     // and with a mouse this slider is the only way to say any of them. It used
     // to live inside the collapsed Brush behaviour panel, which is to say
     // most people painting with a mouse never found it.
@@ -1363,7 +1366,7 @@ function wireTopBar() {
     engine.cleanBrush();
     engine.sampleReservoir();
     updateBrushState({ colour: [0.85, 0.84, 0.81], load: 0 });
-    toast('Beat the devil out of it. Clean brush.');
+    toast('Brush cleaned and shaken dry.');
   });
 
   $('btn-panels').addEventListener('click', () => {

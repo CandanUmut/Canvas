@@ -911,29 +911,26 @@ body {
   .narrow-only {
     display: inline-block;
   }
+  /* The bar wraps onto a second row instead of scrolling sideways. A bar you
+     have to swipe hides Save and Lessons off the right-hand end, and a
+     sideways-scrolling bar over the GL canvas also left an unpainted strip
+     along the bottom of the screen in some browsers. Wrapping avoids both. */
+  #ui {
+    grid-template-rows: auto 1fr;
+  }
   .topbar {
+    flex-wrap: wrap;
     gap: 6px;
-    overflow-x: auto;
-    scrollbar-width: none;
+    padding: 6px 8px;
+    min-height: var(--top);
   }
-  .topbar::-webkit-scrollbar {
-    display: none;
+  .topbar .btn {
+    height: 44px;
+    flex: none;
   }
-  /* The bar scrolls sideways on a narrow screen, and Save and Lessons start
-     off the right-hand end of it. Scrolling works -- swiping the bar reaches
-     them -- but with the scrollbar hidden there is nothing to say they are
-     there, so on a phone the app looks as though it cannot save your painting.
-     A sticky pseudo-element rides the right edge and fades the content under
-     it, which is the usual way of saying "there is more this way". */
-  .topbar::after {
-    content: '';
-    position: sticky;
-    right: 0;
-    flex: 0 0 30px;
-    margin-left: -30px;
-    align-self: stretch;
-    pointer-events: none;
-    background: linear-gradient(to left, var(--p1) 25%, transparent);
+  .topbar .btn.icon {
+    width: 44px;
+    font-size: 16px;
   }
   /* A palette is naturally held low, and a bottom sheet is thumb-reachable. */
   .side {
@@ -941,7 +938,7 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    height: 62vh;
+    height: var(--sheet, 62vh);
     border-left: 0;
     border-top: 1px solid var(--line);
     transform: translateY(100%);
@@ -952,7 +949,9 @@ body {
     transform: none;
   }
   .lessons {
+    top: 0;
     width: min(340px, 100%);
+    z-index: 40;
   }
   .tool {
     width: 54px;
@@ -1052,7 +1051,7 @@ body {
   }
   .side.open ~ .stage .btn.narrow-only#btn-panels,
   body:has(.side.open) .btn.narrow-only#btn-panels {
-    bottom: calc(62vh + 14px);
+    bottom: calc(var(--sheet, 62vh) + 14px);
   }
   .dip-row {
     padding-bottom: 14px;
@@ -1071,4 +1070,225 @@ body {
     linear-gradient(#fff, #fff) center / 1.5px 100% no-repeat,
     linear-gradient(#fff, #fff) center / 100% 1.5px no-repeat;
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));
+}
+
+/* --------------------------------------------------- touch-sized controls */
+
+/* Below 900px wide this is almost always a phone or a tablet held in a hand,
+   so every control gets a finger-sized target (44px or more). The desktop
+   layout above is left exactly as it was. */
+@media (max-width: 900px) {
+  .btn.small,
+  .mediums .btn,
+  .lesson-picker .btn,
+  .firstrun-alts .btn {
+    height: 44px;
+    font-size: 12.5px;
+  }
+  .lessons header .btn.icon {
+    width: 44px;
+    height: 44px;
+  }
+  .dab {
+    width: 44px;
+    height: 44px;
+  }
+  .board {
+    grid-template-columns: 52px 1fr;
+    grid-template-rows: 52px 1fr;
+  }
+  .palette-slot {
+    height: auto;
+    min-height: 236px;
+  }
+  .board-wipe {
+    width: 44px;
+    height: 44px;
+    font-size: 15px;
+  }
+  .dip {
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+  .disclosure summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 13px;
+  }
+  .disclosure summary::before {
+    margin-right: 4px;
+  }
+  .slider input[type="range"] {
+    height: 44px;
+  }
+  .slider input[type="range"]::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+    margin-top: -10.5px;
+  }
+  .slider input[type="range"]::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+  }
+  .checkrow {
+    min-height: 44px;
+  }
+  .checkrow input {
+    width: 22px;
+    height: 22px;
+  }
+  .linkish {
+    min-height: 44px;
+    margin-top: 8px;
+  }
+  .linkish.quiet {
+    margin-top: 0;
+  }
+  .menu button {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+}
+
+/* ------------------------------------------------------------ phone */
+
+/* On a phone the tool rail moves under the canvas as a row you can swipe, so
+   the painting gets the full width of the screen, and the palette opens as a
+   shorter sheet that leaves the top of the picture in view. */
+@media (max-width: 640px) {
+  :root {
+    --rail: 0px;
+    --railh: 68px;
+    --sheet: min(52vh, 440px);
+  }
+  #ui {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "top"
+      "stage"
+      "rail";
+  }
+
+  /* Two tidy rows: what you do to the painting, then undo, view, lessons and
+     save. The first group is stretched so the rest always starts a new row. */
+  .topbar .bar-group:first-of-type {
+    flex: 1 1 calc(100% - 40px);
+  }
+  .topbar .bar-group:first-of-type .btn {
+    flex: 1 1 auto;
+    padding: 0 8px;
+  }
+  .topbar .btn {
+    padding: 0 11px;
+  }
+  .btn.zoom {
+    min-width: 50px;
+  }
+
+  .rail {
+    grid-area: rail;
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    height: calc(var(--railh) + env(safe-area-inset-bottom, 0px));
+    padding: 5px 6px calc(5px + env(safe-area-inset-bottom, 0px));
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .rail::-webkit-scrollbar {
+    display: none;
+  }
+  .rail-group-label {
+    flex: none;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    margin: 0 1px 0 4px;
+    text-align: center;
+  }
+  .tool {
+    flex: none;
+    width: 56px;
+    margin: 0;
+    padding: 4px 2px 2px;
+  }
+  .tool canvas {
+    width: 50px;
+    height: 32px;
+  }
+  .tool[aria-pressed="true"]::after {
+    top: auto;
+    bottom: -1px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    height: 3px;
+  }
+
+  .btn.narrow-only#btn-panels {
+    right: 12px;
+    bottom: calc(var(--railh) + 12px + env(safe-area-inset-bottom, 0px));
+    height: 48px;
+    padding: 0 20px;
+  }
+
+  /* The palette sheet: colours in two rows of finger-sized dabs across the
+     top, the mixing area under them at the board's own proportions. */
+  .side {
+    padding: 8px 6px 20px;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
+  }
+  .board {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 4px;
+    padding: 4px;
+  }
+  .dabs.lights,
+  .dabs.darks {
+    grid-area: auto;
+    grid-auto-flow: column;
+    gap: 2px;
+  }
+  .dabs.lights {
+    grid-template-columns: repeat(5, minmax(0, 52px));
+    justify-content: space-evenly;
+  }
+  .dabs.darks {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+  .dab {
+    width: 100%;
+    max-width: 48px;
+    height: auto;
+    aspect-ratio: 1;
+  }
+  .palette-slot {
+    grid-area: auto;
+    min-height: 0;
+    aspect-ratio: 900 / 520;
+  }
+  .brush-row {
+    margin: 10px 4px 6px;
+  }
+  .dip-row {
+    padding: 0 4px 12px;
+  }
+  .block,
+  .disclosure {
+    margin-left: 4px;
+    margin-right: 4px;
+  }
+
+  .lessons {
+    width: 100%;
+    border-left: 0;
+  }
 }

@@ -23,7 +23,7 @@ const data = await page.evaluate(async () => {
   const dark = s.mix([['sap-green',3],['phthalo-blue',2],['midnight-black',3],['van-dyke-brown',1]], {tool:'brush-2inch'});
   console.log('[t] dark', dark.hex);
 
-  // ONE tree. Bob builds a fir as a MASS: taps close enough together that they
+  // ONE tree. A wet-on-wet fir is built as a MASS: taps close enough together that they
   // merge into solid dark, then catches the near edge of each bough with a
   // lighter green. A lattice of separate marks with sky between them is not a
   // tree, however good each mark is.

@@ -223,7 +223,7 @@ about a seventh of the way toward the colour on the bristles. So a tree went on
 as a translucent haze with the sky showing through it, however many times you
 touched it.
 
-That is not what wet-on-wet looks like. Bob Ross's trees go on dark in one or
+That is not what wet-on-wet looks like. A wet-on-wet painter's trees go on dark in one or
 two touches, because the paint on the bristles sits *on* the sky. It does not
 homogenise with every coat underneath.
 
@@ -539,7 +539,7 @@ Stated plainly, because §0 promised it.
   gloss. Thick paint looks thick from one angle only.
 - **No photometric validation.** We never compared against a measured swatch of
   real paint under known illuminant. Every constant in §3 was set by eye.
-- **The reference confounds three variables.** A photograph of a Bob Ross
+- **The reference confounds three variables.** A photograph of a real wet-on-wet
   painting tells you about the paint, the painter, and the camera together. We
   cannot separate them, so "closer to the reference" partly means "closer to
   being a good painter", which is not what we were tuning.

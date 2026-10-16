@@ -1,4 +1,4 @@
-// "Mountain Lake" -- after the Bob Ross painting: a snow peak over still
+// "Mountain Lake" -- a classic TV-style wet-on-wet landscape: a snow peak over still
 // water, autumn bushes down both banks, big evergreens framing the edges.
 //
 // Written in design coordinates against a 24 x 18 in canvas (1440 x 1080),

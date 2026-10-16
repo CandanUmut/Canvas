@@ -1,4 +1,4 @@
-// Bob Ross's tool roll, rebuilt as footprints.
+// The wet-on-wet landscape painter's tool roll, rebuilt as footprints.
 //
 // Each tool is defined by a bristle mask -- a small greyscale image of what the
 // tool looks like pressed flat against the canvas. The gaps matter more than
@@ -388,7 +388,7 @@ export const TOOLS = [
     short: '2"',
     rackName: '2 inch',
     blurb:
-      'The one he reaches for constantly. Skies, water, big clouds, the base of every tree and bush. Drag it flat to blend, tap its corner to build.',
+      'The workhorse. Skies, water, big clouds, the base of every tree and bush. Drag it flat to blend, tap its corner to build.',
     shape: flatMask({ teeth: 30, fray: 0.24, softV: 0.30 }),
     inches: 2.0,
     range: [0.5, 5.0],
@@ -453,8 +453,8 @@ export const TOOLS = [
     // A fan's footprint is a handful of separate bristle clusters -- only a
     // third of its outline is bristle, against half for the 2" -- so at a
     // dense brush's flow it laid about a fifth as much paint per pull, and
-    // evergreens came out as faint grey lines. Bob loads the fan "full of
-    // paint" and his trees go on dark.
+    // evergreens came out as faint grey lines. A wet-on-wet painter loads the
+    // fan full of paint, and the trees go on dark.
     flow: 3.5,
     pickup: 3.0,
     knee: 0.35,
@@ -711,7 +711,7 @@ export const TOOLS = [
     short: 'Scr',
     rackName: 'Scraper',
     blurb:
-      'Turn the knife over and take paint off. Perfect for cutting a clean water line or fixing a happy accident.',
+      'Turn the knife over and take paint off. Good for cutting a clean water line or undoing a mark you did not mean.',
     category: 'knife',
     shape: knifeMask({ bevel: 0.02, seed: 19 }),
     inches: 2.0,
@@ -772,7 +772,7 @@ export const TOOLS = [
     name: 'Rag / Wipe',
     short: 'Rag',
     rackName: 'Rag',
-    blurb: 'Wipe back to bare canvas. Every happy accident has a way out.',
+    blurb: 'Wipe back to bare canvas. Any mistake has a way out.',
     category: 'utility',
     shape: ragMask(),
     inches: 1.8,

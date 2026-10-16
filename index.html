@@ -3,15 +3,24 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-    <title>The Joy of Painting — Digital Oil Studio</title>
-    <meta
-      name="description"
-      content="A wet-on-wet oil painting studio in the browser. Bob Ross's thirteen colours, his brushes and knives, Liquid White, and real pigment mixing on a real palette — with a pen, a mouse or your finger."
-    />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M5 26c3-1 4-3 6-6l9-13c1-2 3-2 4-1s2 3 1 4l-9 13c-2 3-4 4-7 5-1 0-2-1-2-2z' fill='%23d8d4cc'/%3E%3C/svg%3E"
-    />
+    <title>Wet Canvas — digital oil studio</title>
+    <meta name="description" content="Free wet-on-wet oil painting in your browser: real pigment mixing, thick paint, brushes and knives, and guided landscape lessons. Pen, mouse or finger." />
+    <link rel="canonical" href="https://candanumut.github.io/Canvas/" />
+    <meta name="theme-color" content="#1e1e21" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Wet Canvas" />
+    <meta property="og:title" content="Wet Canvas — digital oil studio" />
+    <meta property="og:description" content="Free wet-on-wet oil painting in your browser: real pigment mixing, thick paint, brushes and knives, and guided landscape lessons. Pen, mouse or finger." />
+    <meta property="og:url" content="https://candanumut.github.io/Canvas/" />
+    <meta property="og:image" content="https://candanumut.github.io/Canvas/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Wet Canvas: a wet-on-wet oil painting studio running in a phone browser" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Wet Canvas — digital oil studio" />
+    <meta name="twitter:description" content="Free wet-on-wet oil painting in your browser: real pigment mixing, thick paint, brushes and knives, and guided landscape lessons. Pen, mouse or finger." />
+    <meta name="twitter:image" content="https://candanumut.github.io/Canvas/og-image.png" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -25,7 +34,7 @@
           <svg viewBox="0 0 32 32" aria-hidden="true">
             <path d="M5 26c3-1 4-3 6-6l9-13c1-2 3-2 4-1s2 3 1 4l-9 13c-2 3-4 4-7 5-1 0-2-1-2-2z" />
           </svg>
-          Joy of Painting
+          Wet Canvas
         </span>
 
         <div class="bar-group">
@@ -83,7 +92,7 @@
 
       <aside class="side" id="side">
         <!-- The palette is one physical object: a pale board with the pigments
-             squeezed around its edges, laid out the way Bob laid his out --
+             squeezed around its edges, laid out the traditional way --
              darks up the left, lights across the top. -->
         <div class="board">
           <div class="dabs lights" id="dabs-lights"></div>
@@ -103,7 +112,7 @@
             <div class="load-bar"><i id="load-fill"></i></div>
             <span class="load-text" id="load-text">empty</span>
           </div>
-          <button class="btn small" id="btn-clean-brush" title="Beat the devil out of it (C)">Clean</button>
+          <button class="btn small" id="btn-clean-brush" title="Clean the brush (C)">Clean</button>
         </div>
 
         <!-- Which part of the bristles goes into the paint. Dipping a corner is

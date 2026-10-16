@@ -1,5 +1,5 @@
-// Guided lessons, in the order Bob actually worked: wet base coat first, then
-// back-to-front. Sky, then the mountains behind, then the foothills, then the
+// Guided lessons, in the order a wet-on-wet landscape is worked: wet base coat
+// first, then back-to-front. Sky, then the mountains behind, then the foothills, then the
 // trees in front, then the water, then the land you are standing on, then the
 // little sticks and twigs, then your name in the corner.
 //
@@ -27,7 +27,7 @@ export const LESSONS = [
           'The tiniest touch of Phthalo Blue -- it is ferocious. Criss-cross little Xs across the top of the canvas and let it fade out as you come down toward the horizon. Leave the lower sky nearly white.',
       },
       {
-        title: 'Happy little clouds',
+        title: 'Soft clouds',
         tool: 'brush-round',
         colours: ['titanium-white'],
         text:

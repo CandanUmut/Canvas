@@ -1,5 +1,5 @@
-// Bob Ross's palette: the same 13 oil colors in every episode, in the order he
-// laid them out on the palette (darks up the left, lights across the top).
+// The classic 13-colour wet-on-wet landscape palette, in the order it is
+// laid out on the board (darks up the left, lights across the top).
 //
 // `tint` is tinting strength -- how hard the pigment fights back when mixed.
 // Phthalos are monsters: a pinhead of Phthalo Blue will swallow a pile of
@@ -84,7 +84,7 @@ export const PIGMENTS = [
     tint: 2.8,
     opacity: 0.40,
     body: 0.8,
-    note: "Bob's sky blue. Brilliant and staining -- barely touch it.",
+    note: 'The classic sky blue. Brilliant and staining -- barely touch it.',
   },
   {
     id: 'prussian-blue',
@@ -180,8 +180,7 @@ export const MEDIUMS = [
 ];
 
 // The first eight are the darks that go up the left of the palette; the last
-// five are the lights that go across the top. Bob laid his out this way every
-// single episode.
+// five are the lights that go across the top -- the traditional layout.
 const LIGHT_FROM = 8;
 PIGMENTS.forEach((p, i) => {
   p.dark = i < LIGHT_FROM;
